@@ -1,0 +1,27 @@
+# Python
+*.pyc
+__pycache__/
+*.env
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Config files (if they contain sensitive data)
+youtube_client/config.py
+# config.json # If you had a root level one
+cookies.json
+# .cookies
+
+# Other
+*.log
+*.tmp
+*.swp

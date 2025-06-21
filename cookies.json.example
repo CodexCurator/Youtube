@@ -1,0 +1,112 @@
+[
+  {
+    "domain": ".youtube.com",
+    "expirationDate": 17xxxxxxxxx,
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "HSID",
+    "path": "/",
+    "sameSite": "unspecified",
+    "secure": true,
+    "session": false,
+    "storeId": "0",
+    "value": "xxxxxxxxxxxxxxx"
+  },
+  {
+    "domain": ".youtube.com",
+    "expirationDate": 17xxxxxxxxx,
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "SSID",
+    "path": "/",
+    "sameSite": "unspecified",
+    "secure": true,
+    "session": false,
+    "storeId": "0",
+    "value": "xxxxxxxxxxxxxxx"
+  },
+  {
+    "domain": ".youtube.com",
+    "expirationDate": 17xxxxxxxxx,
+    "hostOnly": false,
+    "httpOnly": false,
+    "name": "SID",
+    "path": "/",
+    "sameSite": "unspecified",
+    "secure": false,
+    "session": false,
+    "storeId": "0",
+    "value": "xxxxxxxxxxxxxxx"
+  },
+  {
+    "domain": ".youtube.com",
+    "expirationDate": 17xxxxxxxxx,
+    "hostOnly": false,
+    "httpOnly": false,
+    "name": "LOGIN_INFO",
+    "path": "/",
+    "sameSite": "no_restriction",
+    "secure": true,
+    "session": false,
+    "storeId": "0",
+    "value": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+  },
+  {
+    "domain": ".youtube.com",
+    "hostOnly": false,
+    "httpOnly": false,
+    "name": "PREF",
+    "path": "/",
+    "sameSite": "unspecified",
+    "secure": true,
+    "session": true,
+    "storeId": "0",
+    "value": "f1=50000000&hl=en"
+  },
+  {
+    "domain": ".youtube.com",
+    "expirationDate": 17xxxxxxxxx,
+    "hostOnly": false,
+    "httpOnly": false,
+    "name": "VISITOR_INFO1_LIVE",
+    "path": "/",
+    "sameSite": "no_restriction",
+    "secure": true,
+    "session": false,
+    "storeId": "0",
+    "value": "xxxxxxxxxxx"
+  },
+  {
+    "domain": ".youtube.com",
+    "expirationDate": 17xxxxxxxxx,
+    "hostOnly": false,
+    "httpOnly": true,
+    "name": "APISID",
+    "path": "/",
+    "sameSite": "unspecified",
+    "secure": false,
+    "session": false,
+    "storeId": "0",
+    "value": "xxxxxxxxxxxxxxx/xxxxxxxxxxxxxxx"
+  },
+  {
+    "domain": ".youtube.com",
+    "expirationDate": 17xxxxxxxxx,
+    "hostOnly": false,
+    "httpOnly": false,
+    "name": "SAPISID",
+    "path": "/",
+    "sameSite": "unspecified",
+    "secure": true,
+    "session": false,
+    "storeId": "0",
+    "value": "xxxxxxxxxxxxxxx/xxxxxxxxxxxxxxx"
+  }
+]
+// Note: This is just an example structure. You need to get these from your browser's
+// developer tools (Application -> Cookies -> https://www.youtube.com).
+// Copy the array of cookie objects.
+// The most important cookies for authentication are typically SID, HSID, SSID, LOGIN_INFO.
+// Make sure to save the actual file as 'cookies.json' in the same directory as youtube_api.py
+// (or update COOKIE_FILE path in youtube_api.py).
+// Ensure this file (cookies.json) is in your .gitignore if it contains real cookies!
