@@ -25,3 +25,12 @@ cookies.json
 *.log
 *.tmp
 *.swp
+
+# Downloads
+downloads/
+*.mp4
+*.mkv
+*.webm
+*.mp3
+*.m4a
+# Add other potential download extensions if needed
