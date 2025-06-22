@@ -1,25 +1,21 @@
 from flask import Flask, render_template, request, Blueprint, flash, redirect, url_for
 from youtube_client import config
-from youtube_client import youtube_api # This now has the full parsing logic
+from youtube_client import youtube_api
+from youtube_client import database # Import the new database module
 import os
-import subprocess # For yt-dlp
-import re # For sanitizing filenames and extracting video ID
-import threading # For asynchronous downloads
+import subprocess
+import re
+import threading
+import time # For the background manager thread sleep
 
-# print(f"app.py (full) loaded, config.SECRET_KEY: {config.SECRET_KEY}") # Debug
-# print(f"app.py (full) loaded, youtube_api: {youtube_api}") # Debug
+# Initialize the database (creates DB file and tables if they don't exist)
+# This should run once when the application module is first loaded.
+database.init_db()
+print(f"Database initialized at: {database.DATABASE_PATH}")
 
-# Using Blueprint for better organization
-# Ensure template_folder is correctly specified if not in default location relative to blueprint
 main_bp = Blueprint('main', __name__, template_folder='templates', static_folder='static')
 
-# This will be used by downloader later, ensure it's defined
-# Path is relative to this app.py file, then one up to project root, then into 'downloads'
-# DOWNLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'downloads') # For old downloader
-
-# New temporary directory for videos to be played
-# Inside youtube_client/static/ so they are web-accessible
-TEMP_VIDEOS_STATIC_PATH = 'temp_videos' # Relative to static folder
+TEMP_VIDEOS_STATIC_PATH = 'temp_videos'
 TEMP_VIDEOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', TEMP_VIDEOS_STATIC_PATH)
 
 if not os.path.exists(TEMP_VIDEOS_DIR):
@@ -28,18 +24,20 @@ if not os.path.exists(TEMP_VIDEOS_DIR):
         print(f"Created temporary videos directory: {TEMP_VIDEOS_DIR}")
     except Exception as e:
         print(f"Error creating temporary videos directory {TEMP_VIDEOS_DIR}: {e}")
-        # This could be critical for the play_video functionality
 
-# Global in-memory queue for download tasks
-# Each item: {'video_id': 'xxx', 'url': 'full_url', 'title': 'yyy',
-#             'status': 'pending/downloading/completed/failed',
-#             'progress': 0, # Will be tricky to implement with subprocess.run
-#             'filepath': None, 'error_message': None, 'thread': None (optional: store thread object)}
-download_queue = []
-queue_lock = threading.Lock() # To ensure thread-safe access to the download_queue
+# The global in-memory queue and lock are no longer needed, DB handles state.
+# download_queue = [] # REMOVED
+# queue_lock = threading.Lock() # REMOVED (database handles concurrency, or we use app context for DB ops)
 
 @main_bp.route('/')
 def index():
+    # Enhanced Cookie Workflow (Step 1.2 from overall plan)
+    # This logic will run every time the homepage is loaded, which might be too frequent.
+    # Better to run this once at app startup, or on demand via a UI button.
+    # For now, let's keep it simple and put a placeholder for where it would go.
+    # Actual implementation of cookie processing will be a separate step.
+    # print("DEBUG: Homepage route called. Consider cookie processing logic here or at startup.")
+
     # print("Attempting to fetch homepage videos for Flask app...") # Debug
     # Use the renamed functions from the restored youtube_api.py
     videos = youtube_api.get_homepage_videos_parsed()
@@ -91,10 +89,12 @@ def get_video_id(url):
 @main_bp.route('/process_video_request')
 def process_video_request_route():
     video_url = request.args.get('url')
-    video_title_hint = request.args.get('title', 'video') # Optional title hint for filename
+    video_title_hint = request.args.get('title', 'video')
+    # The thumbnail_url should also be passed from the template when adding to queue
+    thumbnail_url_hint = request.args.get('thumbnail', None)
 
     if not video_url:
-        flash("Error: No video URL provided for playback.", "error")
+        flash("Error: No video URL provided.", "error")
         return redirect(url_for('main.index'))
 
     video_id = get_video_id(video_url)
