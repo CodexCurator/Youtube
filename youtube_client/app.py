@@ -8,50 +8,48 @@ import subprocess
 import re
 import threading
 import time
-import filecmp # For comparing file content
+import filecmp
 
 # --- Global variables related to app state ---
 _global_app_initialized = False
-# Flag to indicate if operational cookies are present and considered valid after startup checks
-# This will be used to decide if the cookie polling thread needs to run.
-_operational_cookies_ready = False
-_cookie_polling_thread = None # To hold the reference to the polling thread
+_operational_cookies_ready = False # True if operational cookies are present and considered valid
+_cookie_polling_thread = None
+_stop_cookie_polling = threading.Event() # Event to signal the poller to stop
 
 # --- User Specific Hardcoded Paths (as requested for now) ---
-# This should eventually be moved to a user-editable config file or DB setting
-USER_COOKIE_DOWNLOAD_PATH = "C:/Users/artur/Downloads/www.youtube.com_cookies.txt" # Use forward slashes for better cross-platform Python string handling, os.path will normalize.
+USER_COOKIE_DOWNLOAD_PATH = "C:/Users/artur/Downloads/www.youtube.com_cookies.txt"
 
 def are_files_identical(file1_path, file2_path):
-    """Compares two files by content. Returns True if identical, False otherwise."""
     if not os.path.exists(file1_path) or not os.path.exists(file2_path):
         return False
-    return filecmp.cmp(file1_path, file2_path, shallow=False)
+    # For small cookie files, content comparison is fine.
+    # For very large files, hashing might be better, but cookies are small.
+    try:
+        with open(file1_path, 'r', encoding='utf-8') as f1, open(file2_path, 'r', encoding='utf-8') as f2:
+            return f1.read() == f2.read()
+    except IOError:
+        return False # If files can't be read, assume not identical for safety
 
 def check_operational_cookie_file_validity(operational_cookie_file_abs_path):
-    """Checks if the operational cookie file exists and is not empty or just comments."""
     if not os.path.exists(operational_cookie_file_abs_path):
         return False
     try:
         with open(operational_cookie_file_abs_path, 'r', encoding='utf-8') as f:
             content = f.read().strip()
-            if not content: # Empty
-                return False
-            # Check if it's only comments (very basic check)
+            if not content: return False
             lines = [line for line in content.splitlines() if line.strip() and not line.strip().startswith("#")]
-            if not lines: # Only comments or blank lines
-                return False
-        return True # Has some non-comment content
+            if not lines: return False
+        return True
     except Exception:
-        return False # Error reading or other issues
+        return False
 
 def _cookie_polling_worker_func():
-    """Polls the source cookie path until a file appears, then processes it."""
     global _operational_cookies_ready
-    source_path_to_poll = os.path.normpath(USER_COOKIE_DOWNLOAD_PATH) # Normalize path
+    source_path_to_poll = os.path.normpath(USER_COOKIE_DOWNLOAD_PATH)
     operational_cookie_file_abs_path = os.path.abspath(config.COOKIE_FILE_PATH)
 
-    print(f"COOKIE_POLLER_THREAD: Started. Polling '{source_path_to_poll}' every 1 second for new cookies.")
-    while not _operational_cookies_ready: # Loop until operational cookies are ready
+    print(f"COOKIE_POLLER_THREAD: Started. Polling '{source_path_to_poll}' every 1 second.")
+    while not _stop_cookie_polling.is_set(): # Loop until stop event is set
         if os.path.exists(source_path_to_poll):
             print(f"COOKIE_POLLER_THREAD: New cookie file detected at '{source_path_to_poll}'. Processing...")
             if cookie_processor.process_new_cookie_file(source_path_to_poll, operational_cookie_file_abs_path):
@@ -61,94 +59,142 @@ def _cookie_polling_worker_func():
                     print(f"COOKIE_POLLER_THREAD: Source cookie file '{source_path_to_poll}' deleted.")
                 except OSError as e:
                     print(f"COOKIE_POLLER_THREAD: Error deleting source cookie file '{source_path_to_poll}': {e}")
+
                 _operational_cookies_ready = True # Signal that cookies are now ready
                 print("COOKIE_POLLER_THREAD: Operational cookies now ready. Polling will stop.")
-                # Thread will exit as _operational_cookies_ready is True
+                _stop_cookie_polling.set() # Signal thread to stop
+                break # Exit loop
             else:
-                print(f"COOKIE_POLLER_THREAD: Failed to process new cookie file from '{source_path_to_poll}'. Will retry.")
-                # Optional: delete corrupt source file if processing fails consistently? For now, it will just keep trying.
+                print(f"COOKIE_POLLER_THREAD: Failed to process new cookie file from '{source_path_to_poll}'. Will delete source and retry polling.")
+                try: # Attempt to delete potentially corrupt source to avoid reprocessing bad file
+                    os.remove(source_path_to_poll)
+                    print(f"COOKIE_POLLER_THREAD: (Potentially corrupt) Source cookie file '{source_path_to_poll}' deleted after failed processing.")
+                except OSError as e:
+                    print(f"COOKIE_POLLER_THREAD: Error deleting (potentially corrupt) source cookie file '{source_path_to_poll}': {e}")
         time.sleep(1)
-    print("COOKIE_POLLER_THREAD: Exiting.")
+
+    if _stop_cookie_polling.is_set():
+        print("COOKIE_POLLER_THREAD: Stop event received, exiting.")
+    else: # Should only happen if _operational_cookies_ready became true via another means
+        print("COOKIE_POLLER_THREAD: Exiting (operational_cookies_ready became true).")
 
 
 def handle_cookie_update_on_startup():
-    """Checks for a new cookie file at a user-defined path and processes it."""
-    global _operational_cookies_ready, _cookie_polling_thread
+    global _operational_cookies_ready, _cookie_polling_thread, _stop_cookie_polling
 
-    print("STARTUP_COOKIE_CHECK: Initiated.")
-    source_cookie_path_abs = os.path.normpath(USER_COOKIE_DOWNLOAD_PATH) # Normalize path
+    print("STARTUP_COOKIE_CHECK: Initiated. Strict 'always new' policy.")
+    source_cookie_path_abs = os.path.normpath(USER_COOKIE_DOWNLOAD_PATH)
     operational_cookie_file_abs_path = os.path.abspath(config.COOKIE_FILE_PATH)
 
-    source_exists = os.path.exists(source_cookie_path_abs)
-    operational_exists_and_valid = check_operational_cookie_file_validity(operational_cookie_file_abs_path)
+    _operational_cookies_ready = False # Assume not ready until successfully processed
+    _stop_cookie_polling.clear() # Reset stop event for poller
 
-    if source_exists:
-        if operational_exists_and_valid and are_files_identical(source_cookie_path_abs, operational_cookie_file_abs_path):
-            print(f"STARTUP_COOKIE_CHECK: New cookie file at '{source_cookie_path_abs}' is identical to the operational one.")
-            print("STARTUP_COOKIE_CHECK: Deleting both identical cookie files as per requirement.")
+    # 1. Always delete any existing operational cookie file from previous session.
+    if os.path.exists(operational_cookie_file_abs_path):
+        try:
+            os.remove(operational_cookie_file_abs_path)
+            print(f"STARTUP_COOKIE_CHECK: Deleted existing operational cookie file: '{operational_cookie_file_abs_path}'.")
+        except OSError as e:
+            print(f"STARTUP_COOKIE_CHECK: Error deleting existing operational cookie file '{operational_cookie_file_abs_path}': {e}")
+            # If we can't delete it, we might have issues writing the new one.
+
+    # 2. Check for the source cookie file.
+    if os.path.exists(source_cookie_path_abs):
+        print(f"STARTUP_COOKIE_CHECK: New cookie file found at '{source_cookie_path_abs}'. Processing...")
+        if cookie_processor.process_new_cookie_file(source_cookie_path_abs, operational_cookie_file_abs_path):
+            print(f"STARTUP_COOKIE_CHECK: Successfully processed. Operational cookies at '{operational_cookie_file_abs_path}' created/updated.")
             try:
-                os.remove(source_cookie_path_abs)
-                print(f"STARTUP_COOKIE_CHECK: Deleted source cookie file: '{source_cookie_path_abs}'.")
+                os.remove(source_cookie_path_abs) # Always delete source after successful processing
+                print(f"STARTUP_COOKIE_CHECK: Source cookie file '{source_cookie_path_abs}' deleted.")
             except OSError as e:
                 print(f"STARTUP_COOKIE_CHECK: Error deleting source cookie file '{source_cookie_path_abs}': {e}")
+            _operational_cookies_ready = check_operational_cookie_file_validity(operational_cookie_file_abs_path)
+        else:
+            print(f"STARTUP_COOKIE_CHECK: Failed to process new cookie file from '{source_cookie_path_abs}'.")
+            # Try to delete the problematic source file to avoid reprocessing it if it's malformed
             try:
-                os.remove(operational_cookie_file_abs_path)
-                print(f"STARTUP_COOKIE_CHECK: Deleted operational cookie file: '{operational_cookie_file_abs_path}'.")
+                os.remove(source_cookie_path_abs)
+                print(f"STARTUP_COOKIE_CHECK: (Potentially corrupt) Source cookie file '{source_cookie_path_abs}' deleted after failed processing.")
             except OSError as e:
-                print(f"STARTUP_COOKIE_CHECK: Error deleting operational cookie file '{operational_cookie_file_abs_path}': {e}")
-
-            _operational_cookies_ready = False
-            print(f"STARTUP_COOKIE_CHECK: Action required: Please provide a new cookie file at '{source_cookie_path_abs}'.")
-
-        else: # Source exists and is different, or operational doesn't exist/is invalid
-            print(f"STARTUP_COOKIE_CHECK: New/different cookie file found at '{source_cookie_path_abs}'. Processing...")
-            if cookie_processor.process_new_cookie_file(source_cookie_path_abs, operational_cookie_file_abs_path):
-                print(f"STARTUP_COOKIE_CHECK: Successfully processed. Operational cookies at '{operational_cookie_file_abs_path}' updated.")
-                try:
-                    os.remove(source_cookie_path_abs) # Always delete source after successful processing
-                    print(f"STARTUP_COOKIE_CHECK: Source cookie file '{source_cookie_path_abs}' deleted.")
-                except OSError as e:
-                    print(f"STARTUP_COOKIE_CHECK: Error deleting source cookie file '{source_cookie_path_abs}': {e}")
-                _operational_cookies_ready = check_operational_cookie_file_validity(operational_cookie_file_abs_path)
-            else:
-                print(f"STARTUP_COOKIE_CHECK: Failed to process new cookie file from '{source_cookie_path_abs}'.")
-                _operational_cookies_ready = check_operational_cookie_file_validity(operational_cookie_file_abs_path) # Check current operational
-
+                print(f"STARTUP_COOKIE_CHECK: Error deleting (potentially corrupt) source cookie file '{source_cookie_path_abs}': {e}")
+            _operational_cookies_ready = False # Explicitly false due to processing failure
     else: # Source does not exist
         print(f"STARTUP_COOKIE_CHECK: No new cookie file found at '{source_cookie_path_abs}'.")
-        _operational_cookies_ready = check_operational_cookie_file_validity(operational_cookie_file_abs_path)
-        if not _operational_cookies_ready:
-            print(f"STARTUP_COOKIE_CHECK: Action required: Operational cookies not ready. Please provide a cookie file at '{source_cookie_path_abs}'.")
+        _operational_cookies_ready = False
 
     if not _operational_cookies_ready:
         print("STARTUP_COOKIE_CHECK: Operational cookies are not ready. Starting background poller for new cookies.")
+        print(f"STARTUP_COOKIE_CHECK: Please place your cookies.txt file at: {source_cookie_path_abs}")
+        # Ensure only one poller thread runs
         if _cookie_polling_thread is None or not _cookie_polling_thread.is_alive():
             _cookie_polling_thread = threading.Thread(target=_cookie_polling_worker_func, daemon=True)
             _cookie_polling_thread.start()
         else:
-            print("STARTUP_COOKIE_CHECK: Cookie poller thread already running.")
+            print("STARTUP_COOKIE_CHECK: Cookie poller thread already running (should not happen here).")
     else:
         print(f"STARTUP_COOKIE_CHECK: Operational cookies are ready. Using: '{operational_cookie_file_abs_path}'")
+        _stop_cookie_polling.set() # Ensure any old poller (if somehow alive) is signalled to stop
 
-
+# Blueprint and other app setup follows...
 main_bp = Blueprint('main', __name__, template_folder='templates', static_folder='static')
 TEMP_VIDEOS_STATIC_PATH = 'temp_videos'
 TEMP_VIDEOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', TEMP_VIDEOS_STATIC_PATH)
 
 @main_bp.route('/')
 def index():
-    videos = youtube_api.get_homepage_videos_parsed()
-    if not videos and not _operational_cookies_ready:
-         flash("Cookies not loaded. Please place your cookies.txt file at " + USER_COOKIE_DOWNLOAD_PATH, "warning")
-    elif not videos and _operational_cookies_ready: # Cookies loaded but no videos
-        flash("Could not fetch homepage videos. Cookies might be invalid or YouTube structure changed.", "warning")
+    videos = []
+    if _operational_cookies_ready:
+        videos = youtube_api.get_homepage_videos_parsed()
+        if not videos:
+            flash("Cookies seem loaded, but could not fetch homepage videos. Cookies might be invalid or YouTube structure changed.", "warning")
+    else:
+         flash(f"Cookies not loaded. Waiting for cookie file at {USER_COOKIE_DOWNLOAD_PATH}", "warning")
     return render_template('index.html', videos=videos)
 
-# ... (rest of the app.py code from previous correct version: search, sanitize_filename, get_video_id, process_video_request_route, queue_page_route, player_route, _download_video_worker)
-# For brevity, I'm not repeating the routes that don't change in this step,
-# but they should be assumed to be present from the previous correct state of app.py.
-# The create_app and app = create_app() and if __name__ == '__main__' blocks also remain.
-# The key is the new functions and the modified startup sequence within create_app().
+@main_bp.route('/subscriptions')
+def subscriptions_feed_route():
+    # Placeholder - will use youtube_api.get_subscriptions_feed_parsed()
+    flash("Subscriptions feed not yet implemented.", "info")
+    return render_template('index.html', videos=[], query="Subscriptions (Placeholder)")
+
+
+@main_bp.route('/load_more_home')
+def load_more_home_route():
+    # Placeholder - will use youtube_api.get_more_home_videos_parsed()
+    # This will likely become an HTMX target returning a fragment
+    return "Load More Home - Placeholder. This will be an HTMX fragment."
+
+@main_bp.route('/render_queue_fragment')
+def render_queue_fragment_route():
+    # This route will eventually render a partial template for the queue
+    # For now, let's get items from DB and pass to a new partial template
+    # Or, for extreme simplicity in this step, just return a basic HTML string
+    try:
+        # In a real HTMX app, you'd often use a specific partial template here.
+        # e.g., return render_template('_queue_list_partial.html', download_queue=database.get_queued_videos())
+
+        # For now, let's keep it super simple to ensure the route is hit.
+        # The actual queue display logic is in queue.html, this is for the sidebar.
+        items = database.get_queued_videos() # Get latest queue items
+
+        # This will be replaced by rendering a partial template in a later step.
+        html_items = []
+        if not items:
+            html_items.append("<li>Queue is empty.</li>")
+        else:
+            for item in items[:5]: # Show top 5 for sidebar brevity
+                status_class = f"status-{item['status'].lower()}"
+                title_short = item['title'][:30] + '...' if len(item['title']) > 30 else item['title']
+                html_items.append(f"<li><span class='queue-item-title'>{title_short}</span> <span class='queue-item-status {status_class}'>{item['status'].capitalize()}</span></li>")
+
+        # The HTMX div in base.html expects innerHTML swap.
+        # The styling for these items is in style.css under #queue-sidebar-content
+        return f"<ul>{''.join(html_items)}</ul>"
+
+    except Exception as e:
+        print(f"Error in render_queue_fragment_route: {e}")
+        return "<li>Error loading queue.</li>" # Fallback content for HTMX target
+
 
 @main_bp.route('/search')
 def search():
@@ -156,7 +202,7 @@ def search():
     if not query:
         flash("Please enter a search query.", "info")
         return redirect(url_for('main.index'))
-    videos = youtube_api.search_videos_parsed(query)
+    videos = youtube_api.search_videos_parsed(query) # Search might work even without cookies
     if not videos:
         flash(f"No results found for '{query}'.", "info")
     return render_template('search_results.html', videos=videos, query=query)
@@ -199,11 +245,9 @@ def process_video_request_route():
 
     if db_video_item and db_video_item['status'] == 'completed' and \
        db_video_item['filepath'] and os.path.exists(db_video_item['filepath']):
-        print(f"Video {video_id} already downloaded and in DB. Redirecting to player.")
         return redirect(url_for('main.player_route', video_id=video_id, title=db_video_item['title']))
 
-    if os.path.exists(expected_downloaded_file_path):
-        print(f"Video {video_id}.mp4 found on disk. Ensuring DB consistency and redirecting to player.")
+    if os.path.exists(expected_downloaded_file_path): # File exists, but DB might be out of sync
         if not db_video_item:
             database.add_video_to_queue(video_id, video_url, video_title_hint, thumbnail_url_hint)
         database.update_video_status(video_id, 'completed', filepath=expected_downloaded_file_path)
@@ -218,6 +262,7 @@ def process_video_request_route():
     added_or_updated = database.add_video_to_queue(video_id, video_url, video_title_hint, thumbnail_url_hint)
 
     if added_or_updated:
+        # Pass video_id to worker, it will fetch details from DB
         thread = threading.Thread(target=_download_video_worker, args=(video_id,))
         thread.start()
         flash(f"'{video_title_hint}' has been added/updated in the download queue.", "success")
@@ -249,10 +294,11 @@ def player_route(video_id):
         return redirect(url_for('main.queue_page_route'))
 
 def _download_video_worker(item_video_id):
+    global _operational_cookies_ready # Worker might update this if it's the poller, but primary worker shouldn't
     try:
         video_item = database.get_video_by_id(item_video_id)
         if not video_item:
-            print(f"WORKER: Video {item_video_id} not found in DB when worker started. Aborting.")
+            print(f"WORKER: Video {item_video_id} not found in DB. Aborting.")
             return
 
         if video_item['status'] not in ['pending', 'queued']:
@@ -263,33 +309,35 @@ def _download_video_worker(item_video_id):
         video_title = video_item['title']
         database.update_video_status(item_video_id, 'downloading')
     except Exception as e_db_initial:
-        print(f"WORKER: DB error fetching/updating item {item_video_id} at start: {e_db_initial}")
+        print(f"WORKER: DB error for {item_video_id} at start: {e_db_initial}")
         try:
             database.update_video_status(item_video_id, 'failed', error_message=f"DB error at worker start: {str(e_db_initial)}")
         except Exception: pass
         return
 
     print(f"WORKER: Starting download for '{video_title}' ({item_video_id}). URL: {video_url}")
-
     output_filename_template = os.path.join(TEMP_VIDEOS_DIR, f"{item_video_id}.%(ext)s")
     expected_downloaded_file_path = os.path.join(TEMP_VIDEOS_DIR, f"{item_video_id}.mp4")
-
     final_status = 'failed'
     error_msg_details = "Download did not complete as expected."
     actual_filepath = None
 
     try:
         ffmpeg_dir_path = os.path.dirname(os.path.abspath(__file__))
-        cookie_file_abs_path = os.path.abspath(config.COOKIE_FILE_PATH) # This is the operational cookie file
+        cookie_file_abs_path = os.path.abspath(config.COOKIE_FILE_PATH)
 
-        if not check_operational_cookie_file_validity(cookie_file_abs_path): # Check if operational cookies are valid before use
-            print(f"WORKER: Operational cookie file '{cookie_file_abs_path}' is missing or invalid for video {item_video_id}. Download may fail or use no cookies.")
-            # yt-dlp will proceed without --cookies if the file isn't passed or is empty.
-            # No explicit 'else' needed for command construction, it handles empty list for cookies arg.
+        # Use _operational_cookies_ready to decide if cookies should be passed to yt-dlp
+        # This ensures yt-dlp doesn't try to use a missing/empty operational cookie file.
+        use_cookies_for_yt_dlp = _operational_cookies_ready and check_operational_cookie_file_validity(cookie_file_abs_path)
+        if use_cookies_for_yt_dlp:
+             print(f"WORKER: Using operational cookies for {item_video_id}: {cookie_file_abs_path}")
+        else:
+             print(f"WORKER: Not using cookies for {item_video_id} (operational_cookies_ready: {_operational_cookies_ready}, file valid: {check_operational_cookie_file_validity(cookie_file_abs_path)})")
+
 
         command = [
             'yt-dlp',
-            *(['--cookies', cookie_file_abs_path] if check_operational_cookie_file_validity(cookie_file_abs_path) else []),
+            *(['--cookies', cookie_file_abs_path] if use_cookies_for_yt_dlp else []),
             '--ffmpeg-location', ffmpeg_dir_path,
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
             '--merge-output-format', 'mp4',
@@ -300,41 +348,33 @@ def _download_video_worker(item_video_id):
         ]
 
         print(f"WORKER: yt-dlp command for {item_video_id}: {' '.join(command)}")
-
         TIMEOUT_SECONDS = 600
         result = subprocess.run(command, capture_output=True, text=True, check=False, encoding='utf-8', timeout=TIMEOUT_SECONDS)
 
         if result.returncode == 0:
             if os.path.exists(expected_downloaded_file_path):
-                print(f"WORKER: Download successful for {item_video_id}. File: {expected_downloaded_file_path}")
                 final_status = 'completed'
                 actual_filepath = expected_downloaded_file_path
+                print(f"WORKER: Download successful for {item_video_id}. File: {actual_filepath}")
             else:
-                error_msg_details = f"yt-dlp exited successfully but expected file {item_video_id}.mp4 not found. stdout: {result.stdout}, stderr: {result.stderr}"
+                error_msg_details = f"yt-dlp OK but expected file missing. stdout: {result.stdout}, stderr: {result.stderr}"
                 print(f"WORKER ERROR for {item_video_id}: {error_msg_details}")
         else:
             error_msg_details = f"yt-dlp failed. stderr: {result.stderr or result.stdout}"
             print(f"WORKER ERROR for {item_video_id}: {error_msg_details}")
 
-    except FileNotFoundError:
-        error_msg_details = "yt-dlp command or ffmpeg not found."
-        print(f"WORKER ERROR for {item_video_id}: {error_msg_details}")
-    except subprocess.TimeoutExpired:
-        error_msg_details = "Download command timed out."
-        print(f"WORKER ERROR for {item_video_id}: {error_msg_details}")
     except Exception as e:
-        error_msg_details = f"An unexpected error occurred in worker's download part: {str(e)}"
+        error_msg_details = f"Unexpected error in worker for {item_video_id}: {str(e)}"
         print(f"WORKER ERROR for {item_video_id}: {error_msg_details}")
 
     try:
         database.update_video_status(item_video_id, final_status, filepath=actual_filepath, error_message=error_msg_details if final_status == 'failed' else None)
     except Exception as e_db_final:
         print(f"WORKER: DB error updating item {item_video_id} at end: {e_db_final}")
-
     print(f"WORKER: Finished processing for '{video_title}' ({item_video_id}). Status: {final_status}")
 
 def create_app():
-    global _global_app_initialized, _operational_cookies_ready, _cookie_polling_thread
+    global _global_app_initialized
 
     current_app = Flask(__name__, static_folder='static', template_folder='templates')
     current_app.config.from_object(config)
@@ -346,7 +386,6 @@ def create_app():
             database.init_db()
             print(f"Database initialized at: {database.DATABASE_PATH}")
 
-            # Create TEMP_VIDEOS_DIR before cookie handler might try to use it (though it doesn't)
             if not os.path.exists(TEMP_VIDEOS_DIR):
                 try:
                     os.makedirs(TEMP_VIDEOS_DIR)
@@ -354,7 +393,7 @@ def create_app():
                 except Exception as e:
                     print(f"Error creating temporary videos directory {TEMP_VIDEOS_DIR}: {e}")
 
-            handle_cookie_update_on_startup() # This function now updates _operational_cookies_ready
+            handle_cookie_update_on_startup() # This will manage _operational_cookies_ready
 
         _global_app_initialized = True
         print("STARTUP: Initialization complete.")

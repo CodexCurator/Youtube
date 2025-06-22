@@ -217,3 +217,95 @@ footer {
     color: #555;
     font-size: 0.9em;
 }
+
+/* Page Layout */
+.page-container { /* Replaces old .container for more flexible width control */
+    width: 90%;
+    margin: auto;
+    max-width: 1600px; /* Allow wider content */
+}
+
+.layout-container {
+    display: flex;
+    flex-wrap: nowrap; /* Prevent wrapping */
+    gap: 20px; /* Space between sidebar and main content */
+    margin-top: 20px;
+}
+
+#sidebar {
+    width: 280px; /* Fixed width for sidebar */
+    flex-shrink: 0; /* Prevent sidebar from shrinking */
+    padding: 15px;
+    background-color: #f8f8f8;
+    border-right: 1px solid #ddd;
+    height: calc(100vh - 120px); /* Approximate height, adjust as needed */
+    overflow-y: auto;
+}
+
+#sidebar h2 {
+    margin-top: 0;
+    font-size: 1.3em;
+    color: #333;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 10px;
+}
+
+#main-content {
+    flex-grow: 1; /* Main content takes remaining space */
+    padding: 15px;
+    /* overflow-y: auto; /* If main content needs to scroll independently */
+}
+
+/* Responsive: Stack columns on smaller screens */
+@media (max-width: 768px) {
+    .layout-container {
+        flex-direction: column;
+    }
+    #sidebar {
+        width: 100%;
+        height: auto; /* Auto height for stacked layout */
+        max-height: 40vh; /* Limit height when stacked */
+        border-right: none;
+        border-bottom: 1px solid #ddd;
+        margin-bottom: 20px;
+    }
+}
+
+
+/* Sidebar Queue Specifics (can be moved to a _queue_sidebar.css if it grows) */
+#queue-sidebar-content ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+#queue-sidebar-content li {
+    padding: 8px 5px;
+    border-bottom: 1px solid #eee;
+    font-size: 0.9em;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+#queue-sidebar-content li:last-child {
+    border-bottom: none;
+}
+#queue-sidebar-content .queue-item-title {
+    flex-grow: 1;
+    margin-right: 10px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+#queue-sidebar-content .queue-item-status {
+    font-weight: bold;
+    font-size: 0.85em;
+    padding: 3px 6px;
+    border-radius: 3px;
+    white-space: nowrap;
+}
+/* Status colors for sidebar (can reuse from .queue-table if consistent) */
+#queue-sidebar-content .status-completed { background-color: #d4edda; color: #155724; }
+#queue-sidebar-content .status-downloading { background-color: #d1ecf1; color: #0c5460; }
+#queue-sidebar-content .status-pending,
+#queue-sidebar-content .status-queued { background-color: #fff3cd; color: #856404; }
+#queue-sidebar-content .status-failed { background-color: #f8d7da; color: #721c24; }

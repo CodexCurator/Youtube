@@ -5,36 +5,58 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}YouTube Client{% endblock %}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {# Add HTMX script from CDN #}
+    <script src="https://unpkg.com/htmx.org@1.9.10" integrity="sha384-D1Kt99CQMDuVetoL1lrYwg5t+9QdHe7NLX/SoJYkXDFfX37iInKRy5xLSi8nO7UC" crossorigin="anonymous"></script>
 </head>
 <body>
     <header>
-        <div class="container">
+        <div class="page-container"> {# Changed from .container to allow full width header #}
             <div id="branding">
                 <h1><a href="{{ url_for('main.index') }}">YouTube Client</a></h1>
             </div>
             <nav>
                 <ul>
                     <li><a href="{{ url_for('main.index') }}">Home</a></li>
-                    <li><a href="{{ url_for('main.queue_page_route') }}">Download Queue</a></li>
-                    <!-- Add other navigation links here if needed -->
+                    <li><a href="{{ url_for('main.subscriptions_feed_route') }}">Subscriptions</a></li> {# Placeholder link #}
+                    <li><a href="{{ url_for('main.queue_page_route') }}">Queue Page</a></li> {# Link to full queue page for now #}
+                    {# Add other navigation links here if needed, e.g., Settings #}
                 </ul>
             </nav>
         </div>
     </header>
-    <div class="container">
-        {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-                <div class="flashes">
-                {% for category, message in messages %}
-                    <div class="alert alert-{{ category | default('info') }}">{{ message }}</div>
-                {% endfor %}
-                </div>
-            {% endif %}
-        {% endwith %}
-        {% block content %}{% endblock %}
+
+    <div class="page-container layout-container">
+        <aside id="sidebar">
+            <h2>Download Queue</h2>
+            {# This div will be populated by HTMX #}
+            <div id="queue-sidebar-content"
+                 hx-get="{{ url_for('main.render_queue_fragment_route') }}"
+                 hx-trigger="load, every 5s, queueUpdated from:body"
+                 hx-swap="innerHTML">
+                Loading queue...
+            </div>
+            <hr>
+            <p><a href="{{ url_for('main.queue_page_route') }}">View Full Queue Page</a></p>
+        </aside>
+
+        <main id="main-content">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="flashes">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category | default('info') }}">{{ message }}</div>
+                    {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            {% block content %}{% endblock %}
+        </main>
     </div>
+
     <footer>
-        <p style="text-align: center; margin-top: 20px;">YouTube Client &copy; 2024</p>
+        <div class="page-container">
+            <p style="text-align: center; margin-top: 20px;">YouTube Client &copy; 2024</p>
+        </div>
     </footer>
 </body>
 </html>
