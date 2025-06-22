@@ -9,6 +9,7 @@ import re
 import threading
 import time
 import filecmp
+import json # Added json import
 
 # --- Global variables related to app state ---
 _global_app_initialized = False
