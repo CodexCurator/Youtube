@@ -170,9 +170,10 @@ def process_video_request_route():
     # with a target function that will be defined in the next step.
 
     # We need to ensure _download_video_worker exists before starting a thread for it.
-    # I will define a placeholder for it in this file for now.
+    # I will define a placeholder for it in this file for now. # This comment is outdated.
 
-    thread = threading.Thread(target=_download_video_worker_placeholder, args=(new_queue_item,))
+    # Corrected target for the thread:
+    thread = threading.Thread(target=_download_video_worker, args=(new_queue_item,))
     new_queue_item['thread'] = thread # Store thread if needed for management
     thread.start()
 
@@ -180,9 +181,9 @@ def process_video_request_route():
     # Redirect to a new queue page (to be created) or back to index/referrer
     # For now, redirect to index. Later, redirect to a /queue page.
     # thread = threading.Thread(target=_download_video_worker_placeholder, args=(new_queue_item,)) # Old placeholder target
-    thread = threading.Thread(target=_download_video_worker, args=(new_queue_item,))
-    new_queue_item['thread'] = thread
-    thread.start()
+    # thread = threading.Thread(target=_download_video_worker, args=(new_queue_item,)) # This was a duplicate, removing
+    # new_queue_item['thread'] = thread # This was a duplicate, removing
+    # thread.start() # This was a duplicate, removing
 
     flash(f"'{video_title_hint}' has been added to the download queue.", "success")
     return redirect(url_for('main.queue_page_route'))
