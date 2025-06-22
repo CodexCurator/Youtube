@@ -1,0 +1,61 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title | default("Subscriptions") }} - YouTube Client{% endblock %}
+
+{% block content %}
+    <h2>{{ page_title | default("Subscriptions Feed") }}</h2>
+
+    {# No search bar needed specifically on this page, it's in base.html if desired globally #}
+
+    {% if videos %}
+        <div class="video-grid">
+            {% for video in videos %}
+            <div class="video-item">
+                {# Link to process_video_request for queuing/playing #}
+                <a href="{{ url_for('main.process_video_request_route', url=video.youtube_url, title=video.title, thumbnail=video.thumbnail_url) }}"
+                   title="Process: {{ video.title }}">
+                    <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}">
+                    <h3>{{ video.title | truncate(60) }}</h3>
+                </a>
+                <p class="channel-name">
+                    {% if video.channel_url and video.channel_url != '#' %}
+                        Channel: <a href="{{ video.channel_url }}" target="_blank">{{ video.channel_name }}</a>
+                    {% else %}
+                        Channel: {{ video.channel_name | default('N/A') }}
+                    {% endif %}
+                </p>
+                {# HTMX Add to Queue Button - This structure will be refined when HTMX is fully integrated #}
+                <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
+                        hx-vals='{"video_id": "{{ video.video_id }}", "youtube_url": "{{ video.youtube_url }}", "title": "{{ video.title }}", "thumbnail_url": "{{ video.thumbnail_url }}"}'
+                        hx-swap="none" {# Or target a small status message area, or rely on HX-Trigger for queue #}
+                        class="btn-add-queue">
+                    Add to Queue
+                </button>
+                <p class="video-url-display"><small>Original YT: <a href="{{ video.youtube_url }}" target="_blank">{{ video.youtube_url }}</a></small></p>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p>No videos to display in this feed. (Currently using static placeholder data).</p>
+    {% endif %}
+{% endblock %}
+
+{# Add specific style for btn-add-queue if needed, or use a generic button style #}
+<style>
+    .btn-add-queue {
+        display: inline-block;
+        padding: 6px 12px;
+        margin-top: 8px;
+        font-size: 0.85em;
+        color: #fff;
+        background-color: #007bff; /* Blue */
+        border: none;
+        border-radius: 3px;
+        text-decoration: none;
+        text-align: center;
+        cursor: pointer;
+    }
+    .btn-add-queue:hover {
+        background-color: #0056b3;
+    }
+</style>

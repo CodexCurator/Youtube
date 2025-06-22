@@ -269,12 +269,36 @@ def get_subscriptions_feed_parsed():
     This will require new logic to find the correct ytInitialData structure
     or specific API calls if any are made by the subscriptions page.
     """
-    print("API_PLACEHOLDER: get_subscriptions_feed_parsed called - returning empty list for now.")
-    # cookies = load_cookies()
-    # html_content = # ... fetch subscriptions page HTML ...
-    # if html_content:
-    #     return parse_video_data_from_script(html_content) # May need different parsing logic
-    return []
+    print("API_PLACEHOLDER: get_subscriptions_feed_parsed called - returning STATIC list for now.")
+    # Simulate fetching data. In a real scenario, this would involve HTTP requests and parsing.
+    # Ensure the structure matches what `add_video_to_queue` and templates expect.
+    static_subs_videos = [
+        {
+            'video_id': 'staticSubVid1',
+            'youtube_url': 'https://www.youtube.com/watch?v=staticSubVid1',
+            'title': 'Static Subscription Video 1 - Awesome Content',
+            'thumbnail_url': 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg', # Placeholder thumbnail
+            'channel_name': 'Subscribed Channel A',
+            'channel_url': '#'
+        },
+        {
+            'video_id': 'staticSubVid2',
+            'youtube_url': 'https://www.youtube.com/watch?v=staticSubVid2',
+            'title': 'Another Great Video from My Subscriptions (Static)',
+            'thumbnail_url': 'https://i.ytimg.com/vi/oHg5SJYRHA0/hqdefault.jpg', # Placeholder thumbnail
+            'channel_name': 'Favorite Creator B',
+            'channel_url': '#'
+        },
+        {
+            'video_id': 'staticSubVid3',
+            'youtube_url': 'https://www.youtube.com/watch?v=staticSubVid3',
+            'title': 'Tech Review Weekly - Static Subscription Data',
+            'thumbnail_url': 'https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg', # Placeholder thumbnail
+            'channel_name': 'Tech Channel C',
+            'channel_url': '#'
+        }
+    ]
+    return static_subs_videos
 
 def get_more_home_videos_parsed(next_page_token=None, continuation_data=None):
     """
@@ -295,3 +319,38 @@ def get_more_home_videos_parsed(next_page_token=None, continuation_data=None):
 #    video_data = []
 #    # ... logic to extract video renderers from the continuation JSON ...
 #    return video_data
+
+def get_recommended_videos_for_player(current_video_id=None):
+    """
+    Placeholder for fetching and parsing recommended videos for the currently playing video.
+    For now, returns a static list, ignoring current_video_id.
+    """
+    print(f"API_PLACEHOLDER: get_recommended_videos_for_player called (for video: {current_video_id}) - returning STATIC list.")
+    static_reco_videos = [
+        {
+            'video_id': 'recoVid1',
+            'youtube_url': 'https://www.youtube.com/watch?v=recoVid1',
+            'title': 'Recommended: Fun Adventure Time!',
+            'thumbnail_url': 'https://i.ytimg.com/vi/3yNSF7w2T9c/hqdefault.jpg', # Placeholder
+            'channel_name': 'Adventure Vids',
+            'channel_url': '#'
+        },
+        {
+            'video_id': 'recoVid2',
+            'youtube_url': 'https://www.youtube.com/watch?v=recoVid2',
+            'title': 'You Might Also Like: Cooking Show Ep 5',
+            'thumbnail_url': 'https://i.ytimg.com/vi/6Af6b_wyiwI/hqdefault.jpg', # Placeholder
+            'channel_name': 'Kitchen Delights',
+            'channel_url': '#'
+        },
+        {
+            'video_id': 'recoVid3',
+            'youtube_url': 'https://www.youtube.com/watch?v=recoVid3',
+            'title': 'Up Next (Static): Learning Python Basics',
+            'thumbnail_url': 'https://i.ytimg.com/vi/x7Xzbcq_xG4/hqdefault.jpg', # Placeholder
+            'channel_name': 'Code Master',
+            'channel_url': '#'
+        }
+    ]
+    # Ensure no recommendation is the same as the current video
+    return [v for v in static_reco_videos if v['video_id'] != current_video_id][:3] # Max 3 recos

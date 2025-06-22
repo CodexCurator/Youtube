@@ -49,8 +49,20 @@
 
     <p style="margin-top: 20px;">
         <a href="{{ url_for('main.index') }}">Back to Home</a>
-        {# Add a refresh button for the queue page, or implement auto-refresh with JS later #}
         <a href="{{ url_for('main.queue_page_route') }}" style="margin-left: 15px;">Refresh Queue</a>
+        <button hx-post="{{ url_for('main.clear_queue_api_route') }}"
+                hx-confirm="Are you sure you want to clear the entire download queue? This cannot be undone."
+                hx-target="#queue-sidebar-content" {# Optional: if you want to replace sidebar content on success #}
+                hx-swap="innerHTML" {# Or use HX-Trigger from server to refresh specific parts #}
+                class="btn-danger" style="margin-left: 15px;">
+            Clear Entire Queue
+        </button>
+        <button hx-post="{{ url_for('main.clear_cache_api_route') }}"
+                hx-confirm="Are you sure you want to clear all downloaded video files? Queue items will remain but need re-downloading."
+                hx-target="#queue-sidebar-content" {# Optional: if you want to replace sidebar content on success #}
+                class="btn-danger" style="margin-left: 15px;">
+            Clear Video Cache
+        </button>
     </p>
 
 <style>

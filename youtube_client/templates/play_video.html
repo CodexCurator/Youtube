@@ -34,6 +34,65 @@
         display: block; /* Remove extra space below video element */
         max-height: 70vh; /* Limit height to 70% of viewport height */
     }
+    .recommendations-container {
+        margin-top: 20px;
+        padding-top: 15px;
+        border-top: 1px solid #eee;
+    }
+    .recommendations-container h3 {
+        margin-top: 0;
+        font-size: 1.2em;
+    }
+    .recommendation-item {
+        display: flex;
+        margin-bottom: 10px;
+        font-size: 0.9em;
+    }
+    .recommendation-item img {
+        width: 120px; /* Fixed width for recommended thumbs */
+        height: 68px; /* 16:9 aspect ratio */
+        object-fit: cover;
+        margin-right: 10px;
+        border: 1px solid #ccc;
+    }
+    .recommendation-item-info h4 {
+        margin: 0 0 5px 0;
+        font-size: 1em;
+        line-height: 1.2;
+    }
+    .recommendation-item-info p {
+        margin: 0;
+        font-size: 0.85em;
+        color: #555;
+    }
 </style>
+
+    {% if recommended_videos %}
+    <div class="recommendations-container">
+        <h3>Recommended Videos</h3>
+        {% for reco_video in recommended_videos %}
+            <div class="recommendation-item">
+                <a href="{{ url_for('main.process_video_request_route', url=reco_video.youtube_url, title=reco_video.title, thumbnail=reco_video.thumbnail_url) }}"
+                   title="Process: {{ reco_video.title }}">
+                    <img src="{{ reco_video.thumbnail_url }}" alt="{{ reco_video.title }}">
+                </a>
+                <div class="recommendation-item-info">
+                    <a href="{{ url_for('main.process_video_request_route', url=reco_video.youtube_url, title=reco_video.title, thumbnail=reco_video.thumbnail_url) }}"
+                       title="Process: {{ reco_video.title }}">
+                        <h4>{{ reco_video.title | truncate(50) }}</h4>
+                    </a>
+                    <p>{{ reco_video.channel_name | default('N/A') }}</p>
+                    {# Add to Queue Button for recommended videos #}
+                    <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
+                            hx-vals='{"video_id": "{{ reco_video.video_id }}", "youtube_url": "{{ reco_video.youtube_url }}", "title": "{{ reco_video.title }}", "thumbnail_url": "{{ reco_video.thumbnail_url }}"}'
+                            hx-swap="none"
+                            class="btn-add-queue btn-small">
+                        Add to Queue
+                    </button>
+                </div>
+            </div>
+        {% endfor %}
+    </div>
+    {% endif %}
 
 {% endblock %}

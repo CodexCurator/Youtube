@@ -239,6 +239,17 @@ def remove_video_from_queue(video_id):
     print(f"Video {video_id} not found in queue for removal.")
     return False
 
+def clear_all_video_queue_items():
+    """Deletes all items from the video_queue table."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("DELETE FROM video_queue")
+    conn.commit()
+    deleted_count = conn.total_changes # Should be number of rows deleted
+    conn.close()
+    print(f"Cleared {deleted_count} items from the video queue.")
+    return deleted_count
+
 
 if __name__ == '__main__':
     # This block can be used for direct testing of the database module

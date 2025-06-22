@@ -14,7 +14,7 @@
             {% for video in videos %}
             <div class="video-item">
                 {# Link now points to our local route that processes the video request (queues/plays) #}
-                <a href="{{ url_for('main.process_video_request_route', url=video.url, title=video.title) }}" title="Process: {{ video.title }}">
+                <a href="{{ url_for('main.process_video_request_route', url=video.url, title=video.title, thumbnail=video.thumbnail) }}" title="Process: {{ video.title }}">
                     <img src="{{ video.thumbnail }}" alt="{{ video.title }}">
                     <h3>{{ video.title | truncate(60) }}</h3>
                 </a>

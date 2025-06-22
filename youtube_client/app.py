@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, Blueprint, flash, redirect, url_for
+from flask import Flask, render_template, request, Blueprint, flash, redirect, url_for, make_response
 from youtube_client import config
 from youtube_client import youtube_api
 from youtube_client import database
@@ -153,9 +153,11 @@ def index():
 
 @main_bp.route('/subscriptions')
 def subscriptions_feed_route():
-    # Placeholder - will use youtube_api.get_subscriptions_feed_parsed()
-    flash("Subscriptions feed not yet implemented.", "info")
-    return render_template('index.html', videos=[], query="Subscriptions (Placeholder)")
+    # Using the (now static) data from youtube_api
+    subscription_videos = youtube_api.get_subscriptions_feed_parsed()
+    if not subscription_videos: # Should not happen with static data, but good practice
+        flash("Could not load subscriptions feed (placeholder).", "warning")
+    return render_template('subscriptions_feed.html', videos=subscription_videos, page_title="My Subscriptions")
 
 
 @main_bp.route('/load_more_home')
@@ -163,6 +165,102 @@ def load_more_home_route():
     # Placeholder - will use youtube_api.get_more_home_videos_parsed()
     # This will likely become an HTMX target returning a fragment
     return "Load More Home - Placeholder. This will be an HTMX fragment."
+
+@main_bp.route('/api/queue/clear', methods=['POST'])
+def clear_queue_api_route():
+    """Clears all items from the video queue."""
+    try:
+        count = database.clear_all_video_queue_items()
+        flash(f"Successfully cleared {count} items from the queue.", "success")
+        # For HTMX, trigger a refresh of the queue display
+        response = make_response("", 200) # Empty success response
+        response.headers['HX-Trigger'] = 'queueUpdated' # Event for HTMX to listen to
+        return response
+    except Exception as e:
+        print(f"Error clearing queue: {e}")
+        flash("Error clearing the queue.", "error")
+        # HTMX can also handle error responses if needed, e.g. return error code
+        response = make_response("Error clearing queue", 500)
+        return response
+
+def _clear_temp_video_files():
+    """Deletes all .mp4 files from TEMP_VIDEOS_DIR and updates DB."""
+    cleared_files_count = 0
+    updated_db_entries_count = 0
+    if not os.path.exists(TEMP_VIDEOS_DIR):
+        print("Video cache directory does not exist. Nothing to clear.")
+        return cleared_files_count, updated_db_entries_count
+
+    for filename in os.listdir(TEMP_VIDEOS_DIR):
+        if filename.endswith(".mp4"): # Or other extensions if we support more
+            file_path = os.path.join(TEMP_VIDEOS_DIR, filename)
+            try:
+                os.remove(file_path)
+                cleared_files_count += 1
+                print(f"Deleted cached file: {file_path}")
+
+                # Update corresponding DB entry
+                video_id = filename.replace(".mp4", "") # Assumes filename is VIDEO_ID.mp4
+                db_item = database.get_video_by_id(video_id)
+                if db_item and db_item['status'] in ['completed', 'cached']: # Only update if it was considered downloaded/cached
+                    # Reset to 'pending' or a new 'archived_no_file' status.
+                    # 'pending' allows re-download. 'archived' might hide it from active queue.
+                    # Let's use 'pending' to allow easy re-download.
+                    database.update_video_status(video_id, 'pending', filepath=None, error_message="Cache file deleted by user.")
+                    updated_db_entries_count +=1
+            except OSError as e:
+                print(f"Error deleting file {file_path}: {e}")
+    return cleared_files_count, updated_db_entries_count
+
+@main_bp.route('/api/cache/clear', methods=['POST'])
+def clear_cache_api_route():
+    """Clears all .mp4 files from the temporary video cache."""
+    try:
+        cleared_count, db_updated_count = _clear_temp_video_files()
+        flash(f"Successfully cleared {cleared_count} cached video files and updated {db_updated_count} DB entries.", "success")
+        response = make_response("", 200)
+        response.headers['HX-Trigger'] = 'queueUpdated' # Refresh queue to show changed statuses
+        return response
+    except Exception as e:
+        print(f"Error clearing video cache: {e}")
+        flash("Error clearing the video cache.", "error")
+        response = make_response("Error clearing video cache", 500)
+        return response
+
+@main_bp.route('/api/queue/add', methods=['POST'])
+def add_to_queue_api_route():
+    try:
+        # Data from HTMX POST request (hx-vals)
+        video_id = request.form.get('video_id')
+        youtube_url = request.form.get('youtube_url')
+        title = request.form.get('title')
+        thumbnail_url = request.form.get('thumbnail_url')
+
+        if not all([video_id, youtube_url, title]): # thumbnail_url is optional for adding
+            flash("Missing video data for adding to queue.", "error")
+            return make_response("Missing data", 400)
+
+        if database.add_video_to_queue(video_id, youtube_url, title, thumbnail_url):
+            flash(f"'{title}' added to queue.", "success")
+            response = make_response("", 200) # OK, no content needed
+             # Trigger sidebar queue update and potentially other elements
+            response.headers['HX-Trigger'] = json.dumps({"queueUpdated": None, "showMessage": f"{title} added to queue."})
+            return response
+        else:
+            # add_video_to_queue returned False, likely meaning it's already in queue and not failed
+            db_item = database.get_video_by_id(video_id)
+            current_status = db_item['status'] if db_item else "unknown"
+            flash(f"'{title}' already in queue (status: {current_status}).", "info")
+            # Still send queueUpdated trigger as status might have been 'failed' and now 'pending'
+            response = make_response("", 200)
+            response.headers['HX-Trigger'] = json.dumps({"queueUpdated": None, "showMessage": f"{title} already in queue ({current_status})."})
+            return response
+
+    except Exception as e:
+        print(f"Error in /api/queue/add: {e}")
+        flash("Error adding video to queue.", "error")
+        return make_response(f"Error adding to queue: {str(e)}", 500)
+
 
 @main_bp.route('/render_queue_fragment')
 def render_queue_fragment_route():
@@ -284,9 +382,17 @@ def player_route(video_id):
         video_file_for_static_url = os.path.basename(video_item_db['filepath'])
         video_static_path_constructed = f"{TEMP_VIDEOS_STATIC_PATH}/{video_file_for_static_url}"
 
+        recommended_videos = youtube_api.get_recommended_videos_for_player(current_video_id=video_id)
+
+        # If this route is targeted by HTMX for the main content area:
+        # Render 'play_video.html' which should be structured as a content block,
+        # not extending base.html if it's meant to be a fragment for hx-swap="innerHTML".
+        # For now, assume play_video.html is a full page, but it can be adapted.
         return render_template('play_video.html',
                                video_file_url=url_for('static', filename=video_static_path_constructed),
-                               title=video_item_db['title'])
+                               title=video_item_db['title'],
+                               current_video_id=video_id,
+                               recommended_videos=recommended_videos)
     else:
         flash(f"Cannot play video {video_id}. File not found or not in database correctly.", "error")
         if video_item_db:
