@@ -1,13 +1,10 @@
 {% extends "base.html" %}
 
-{% block title %}Home - YouTube Client{% endblock %}
+{% block title %}Search Results for "{{ query }}" - YouTube Client{% endblock %}
 
 {% block content %}
-    <h2>Homepage Recommendations</h2>
-    <form action="{{ url_for('main.search') }}" method="get" class="search-form">
-        <input type="text" name="q" placeholder="Search YouTube..." value="{{ query | default('') }}">
-        <input type="submit" value="Search">
-    </form>
+    <h2>Search Results for "{{ query }}"</h2>
+    <p><a href="{{ url_for('main.index') }}">Back to Home</a></p>
 
     {% if videos %}
         <div class="video-grid">
@@ -29,11 +26,7 @@
             </div>
             {% endfor %}
         </div>
-    {% elif query %}
-        {# This part is more for search_results, but index might show it if redirected with a query #}
-        {# Handled by flash messages now #}
     {% else %}
-        {# Handled by flash messages in app.py if videos are empty on homepage #}
-        <p>No videos to display. Ensure your `www.youtube.com_cookies.txt` is set up correctly in the project root and is valid.</p>
+        <p>No results found for "{{ query }}". Try a different search term.</p>
     {% endif %}
 {% endblock %}

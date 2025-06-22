@@ -1,32 +1,77 @@
-from flask import Flask, render_template
-# Explicitly import from the youtube_client package
+from flask import Flask, render_template, request, Blueprint, flash, redirect, url_for
 from youtube_client import config
-from youtube_client import youtube_api
+from youtube_client import youtube_api # This now has the full parsing logic
+import os # Will be used for downloader later
 
-# print(f"app.py overwritten, config.SECRET_KEY: {config.SECRET_KEY}") # Optional debug
-# print(f"app.py overwritten, youtube_api: {youtube_api}") # Optional debug
+# print(f"app.py (full) loaded, config.SECRET_KEY: {config.SECRET_KEY}") # Debug
+# print(f"app.py (full) loaded, youtube_api: {youtube_api}") # Debug
 
-app = Flask(__name__, template_folder='templates')
-app.config['SECRET_KEY'] = config.SECRET_KEY # Ensure config is usable
+# Using Blueprint for better organization
+# Ensure template_folder is correctly specified if not in default location relative to blueprint
+main_bp = Blueprint('main', __name__, template_folder='templates', static_folder='static')
 
-@app.route('/')
-def minimal_index():
-    # Test calling a function from youtube_api
-    api_data = youtube_api.get_some_data() # Ensure youtube_api is usable
-    # print(f"API Data in route: {api_data}") # Optional debug
-    return render_template('index.html', message=api_data)
+# This will be used by downloader later, ensure it's defined
+# Path is relative to this app.py file, then one up to project root, then into 'downloads'
+DOWNLOADS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'downloads')
+
+@main_bp.route('/')
+def index():
+    # print("Attempting to fetch homepage videos for Flask app...") # Debug
+    # Use the renamed functions from the restored youtube_api.py
+    videos = youtube_api.get_homepage_videos_parsed()
+    if not videos:
+        # print("No videos returned from youtube_api.get_homepage_videos_parsed()") # Debug
+        flash("Could not fetch homepage videos. Check cookies and console output.", "warning")
+    # else:
+        # print(f"Successfully fetched {len(videos)} video(s) for homepage.") # Debug
+    return render_template('index.html', videos=videos)
+
+@main_bp.route('/search')
+def search():
+    query = request.args.get('q', '')
+    if not query:
+        flash("Please enter a search query.", "info")
+        return redirect(url_for('main.index'))
+
+    # print(f"Attempting to search videos for query: '{query}' in Flask app...") # Debug
+    videos = youtube_api.search_videos_parsed(query)
+    if not videos:
+        # print(f"No videos returned from youtube_api.search_videos_parsed() for query '{query}'.") # Debug
+        flash(f"No results found for '{query}'.", "info")
+    # else:
+        # print(f"Successfully fetched {len(videos)} video(s) for search query '{query}'.") # Debug
+    return render_template('search_results.html', videos=videos, query=query)
+
+# Downloader route will be re-added in a later step
+
+def create_app():
+    # The Flask app instance. Note: static_folder and template_folder here
+    # are relative to the app's root_path (usually where app.py is).
+    # Blueprints can have their own template/static folders.
+    # If your templates/static are inside youtube_client/, this should be fine.
+    current_app = Flask(__name__, static_folder='static', template_folder='templates')
+
+    # Load configuration from config.py
+    current_app.config.from_object(config) # This loads SECRET_KEY etc.
+
+    current_app.register_blueprint(main_bp) # url_prefix='/' is default
+
+    return current_app
+
+# This is the global app object that `python -m youtube_client.app` will look for by default
+# if it doesn't find a `create_app` factory. Or, Flask CLI can be told to use create_app.
+# For simplicity with `python -m`, providing `app` directly can work.
+# However, using a factory `create_app()` is generally better practice.
+# Let's ensure Flask CLI can find it if `FLASK_APP=youtube_client.app` is used.
+# The `python -m youtube_client.app` command might need the app object directly
+# or might execute this file and then look for `app`.
+# The `if __name__ == '__main__':` block handles direct execution.
+app = create_app()
 
 if __name__ == '__main__':
-    # This __main__ block is typically for when you run the script directly
-    # e.g., python youtube_client/app.py
-    # For the `python -m youtube_client.app` execution style,
-    # the `app` object at the module level is what's usually picked up by Flask's runner.
-    print("Running app directly via __main__ (intended for 'python -m youtube_client.app')")
+    # This allows running the app directly with `python youtube_client/app.py`
+    # (though `python -m youtube_client.app` is preferred from project root).
+    # The create_app() call above already creates the app instance.
+    print(f"Starting Flask app. Ensure CWD is project root for cookie file if using relative path: {os.getcwd()}")
+    print(f"Cookie file path configured as: {config.COOKIE_FILE_PATH}")
     app.run(debug=True, port=5001)
-
-# Note: If `python -m youtube_client.app` were to look for a `create_app` factory,
-# we would define it like this:
-# def create_app():
-#     # app initialization as above
-#     return app
-# However, for `python -m module.submodule_with_app_object`, Flask should find the global `app` object.
