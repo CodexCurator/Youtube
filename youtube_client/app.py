@@ -2,22 +2,24 @@ from flask import Flask, render_template, request, Blueprint, flash, redirect, u
 from youtube_client import config
 from youtube_client import youtube_api
 from youtube_client import database
-from youtube_client import cookie_processor # Import the new cookie_processor
+from youtube_client import cookie_processor
 import os
 import subprocess
 import re
 import threading
 import time
 
+# Global flag to ensure startup routines run only once
+_global_app_initialized = False
+
 def handle_cookie_update_on_startup():
     """Checks for a new cookie file as per settings and processes it."""
     print("STARTUP: Checking for new cookie file...")
-    # Defaults are provided in database.get_setting if not found in DB
     source_path_setting = database.get_setting('cookie_source_path', 'new_cookies.txt')
     delete_source = database.get_setting('delete_source_cookie', False)
 
     abs_source_path = os.path.abspath(source_path_setting)
-    operational_cookie_file = os.path.abspath(config.COOKIE_FILE_PATH) # From config.py
+    operational_cookie_file = os.path.abspath(config.COOKIE_FILE_PATH)
 
     if os.path.exists(abs_source_path):
         print(f"STARTUP: New cookie file found at '{abs_source_path}'. Processing...")
@@ -39,39 +41,10 @@ def handle_cookie_update_on_startup():
     else:
         print(f"STARTUP: Using operational cookie file: '{operational_cookie_file}'")
 
-# Initialize the database, then process cookies
-# This ensures DB is ready before settings are read by cookie handler
-if __name__ != '__main__' or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
-    # This condition tries to ensure these run only once, especially with Werkzeug reloader.
-    # When Flask's reloader is active, modules can be imported twice.
-    # The check for WERKZEUG_RUN_MAIN is a common way to handle this.
-    # Alternatively, use app.before_first_request or similar Flask mechanisms if preferred,
-    # but for script-level init, this is a common pattern.
-
-    # Check if this is the main process or a reloader process
-    # Running these initializations only in the main Werkzeug process
-    # or when not using Werkzeug (e.g. production gunicorn)
-    is_main_process = os.environ.get("WERKZEUG_RUN_MAIN") == "true" or not os.environ.get("WERKZEUG_RUN_MAIN")
-
-    if not hasattr(app, '_db_initialized'): # Basic flag to prevent re-initialization
-        print("Initializing DB and Startup Routines...")
-        database.init_db()
-        print(f"Database initialized at: {database.DATABASE_PATH}")
-        handle_cookie_update_on_startup() # Process cookies right after DB init
-        # Set a flag on the app object (if app is defined here) or a global flag
-        # to indicate initialization has run. This is tricky if app isn't created yet.
-        # For now, simple print. Better: use Flask app context or before_first_request.
-        # For now, the above condition `if __name__ != '__main__'` etc. will mostly handle it.
-        # Let's assume app object needs to be created before this for the flag.
-        # This init logic might be better inside create_app or using @app.before_first_request
-
 main_bp = Blueprint('main', __name__, template_folder='templates', static_folder='static')
 
 TEMP_VIDEOS_STATIC_PATH = 'temp_videos'
 TEMP_VIDEOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'static', TEMP_VIDEOS_STATIC_PATH)
-
-# Moved directory creation into create_app to ensure it happens within app context
-# or after app object is available for potential logging configuration.
 
 @main_bp.route('/')
 def index():
@@ -180,6 +153,14 @@ def player_route(video_id):
 
 def _download_video_worker(item_video_id):
     try:
+        # Ensure Flask app context for operations that might need it (e.g., config access)
+        # This is more robust if worker uses app config or extensions.
+        # For current direct config import and os calls, it might not be strictly necessary,
+        # but good practice if the worker evolves.
+        # However, creating a new app context in a thread requires care.
+        # Simpler for now: assume worker has all info or can access config directly.
+        # with app.app_context(): # If app object is accessible and needed
+
         video_item = database.get_video_by_id(item_video_id)
         if not video_item:
             print(f"WORKER: Video {item_video_id} not found in DB when worker started. Aborting.")
@@ -194,6 +175,11 @@ def _download_video_worker(item_video_id):
         database.update_video_status(item_video_id, 'downloading')
     except Exception as e_db_initial:
         print(f"WORKER: DB error fetching/updating item {item_video_id} at start: {e_db_initial}")
+        # Attempt to mark as failed if we can identify the item
+        try:
+            database.update_video_status(item_video_id, 'failed', error_message=f"DB error at worker start: {str(e_db_initial)}")
+        except Exception:
+            pass # Avoid error loops if DB is truly unavailable
         return
 
     print(f"WORKER: Starting download for '{video_title}' ({item_video_id}). URL: {video_url}")
@@ -258,37 +244,41 @@ def _download_video_worker(item_video_id):
 
     print(f"WORKER: Finished processing for '{video_title}' ({item_video_id}). Status: {final_status}")
 
-_app_initialized_flag = False
-
 def create_app():
-    global _app_initialized_flag
+    global _global_app_initialized
+
     current_app = Flask(__name__, static_folder='static', template_folder='templates')
     current_app.config.from_object(config)
     current_app.register_blueprint(main_bp)
 
-    if not _app_initialized_flag:
-        with current_app.app_context(): # Ensure DB operations have app context if needed by extensions
-            print("Initializing DB and Startup Routines (within create_app)...")
-            database.init_db()
-            print(f"Database initialized at: {database.DATABASE_PATH}")
-            handle_cookie_update_on_startup()
-            if not os.path.exists(TEMP_VIDEOS_DIR): # Ensure temp dir creation here too
-                try:
-                    os.makedirs(TEMP_VIDEOS_DIR)
-                    print(f"Created temporary videos directory: {TEMP_VIDEOS_DIR}")
-                except Exception as e:
-                    print(f"Error creating temporary videos directory {TEMP_VIDEOS_DIR}: {e}")
-        _app_initialized_flag = True
+    if not _global_app_initialized:
+        # It's better to do this within app_context if db operations need it,
+        # but init_db and handle_cookie_update_on_startup are designed to be standalone for now.
+        print("STARTUP: Initializing DB and Startup Routines (within create_app)...")
+        database.init_db()
+        print(f"Database initialized at: {database.DATABASE_PATH}")
+        handle_cookie_update_on_startup()
+
+        # Ensure TEMP_VIDEOS_DIR is created
+        if not os.path.exists(TEMP_VIDEOS_DIR):
+            try:
+                os.makedirs(TEMP_VIDEOS_DIR)
+                print(f"Created temporary videos directory: {TEMP_VIDEOS_DIR}")
+            except Exception as e:
+                print(f"Error creating temporary videos directory {TEMP_VIDEOS_DIR}: {e}")
+
+        _global_app_initialized = True
+        print("STARTUP: Initialization complete.")
 
     return current_app
 
 app = create_app()
 
 if __name__ == '__main__':
-    # When run with `python -m youtube_client.app`, Flask's own mechanism for __main__ takes over.
-    # This block is more for `python youtube_client/app.py` which is not the recommended way for this project.
-    # However, to ensure init_db and cookie handling run if executed this way:
-    # The create_app() above already calls them if _app_initialized_flag is False.
-    print(f"Starting Flask app directly via __main__. Ensure CWD is project root for cookie file: {os.getcwd()}")
-    print(f"Cookie file path configured as: {config.COOKIE_FILE_PATH}")
+    # This block is less critical when `python -m youtube_client.app` is used,
+    # as Flask's CLI invokes `create_app` or finds the `app` object.
+    # The `create_app()` call above already handles initialization logic once.
+    print(f"Starting Flask app directly via __main__ (Flask's reloader might run create_app again). Ensure CWD is project root: {os.getcwd()}")
+    # The app object is already created by `app = create_app()` above.
+    # The init routines are called within create_app ensuring they run once.
     app.run(debug=True, port=5001)
