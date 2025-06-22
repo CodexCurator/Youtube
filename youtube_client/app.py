@@ -138,8 +138,16 @@ def play_video_route():
         # User provided: "C:\Users\artur\Desktop\Youtube\youtube_client\ffmpeg.exe"
         # So, ffmpeg_dir_path should indeed be the 'youtube_client' directory.
 
+        # Get absolute path to the cookie file (expected in project root)
+        # config.COOKIE_FILE_PATH is relative to project root.
+        # os.path.abspath will resolve it correctly if CWD is project root.
+        # If CWD is not project root (e.g. if script is run from elsewhere), this needs care.
+        # Assuming `python -m youtube_client.app` is run from project root, CWD is project root.
+        cookie_file_abs_path = os.path.abspath(config.COOKIE_FILE_PATH)
+
         command = [
             'yt-dlp',
+            '--cookies', cookie_file_abs_path,
             '--ffmpeg-location', ffmpeg_dir_path,
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', # Request MP4
             '--merge-output-format', 'mp4', # Ensure output is mp4
