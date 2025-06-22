@@ -132,14 +132,22 @@ def play_video_route():
 
     # This is a synchronous download. The page will appear to hang.
     try:
+        # Construct path to ffmpeg assuming it's in the same directory as app.py (youtube_client/)
+        # This path needs to point to the DIRECTORY containing ffmpeg.exe and ffprobe.exe
+        ffmpeg_dir_path = os.path.dirname(os.path.abspath(__file__))
+        # User provided: "C:\Users\artur\Desktop\Youtube\youtube_client\ffmpeg.exe"
+        # So, ffmpeg_dir_path should indeed be the 'youtube_client' directory.
+
         command = [
             'yt-dlp',
+            '--ffmpeg-location', ffmpeg_dir_path,
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', # Request MP4
             '--merge-output-format', 'mp4', # Ensure output is mp4
             '-o', output_filename_template, # Save as VIDEO_ID.ext (yt-dlp determines ext)
             '--no-playlist',
             video_url
         ]
+        print(f"DEBUG: yt-dlp command: {' '.join(command)}") # Debugging the command
 
         TIMEOUT_SECONDS = 300 # 5 minutes
         result = subprocess.run(command, capture_output=True, text=True, check=False, encoding='utf-8', timeout=TIMEOUT_SECONDS)
