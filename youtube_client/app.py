@@ -153,10 +153,10 @@ def index():
 
 @main_bp.route('/subscriptions')
 def subscriptions_feed_route():
-    # Using the (now static) data from youtube_api
+    # Attempting to get dynamic data from youtube_api
     subscription_videos = youtube_api.get_subscriptions_feed_parsed()
-    if not subscription_videos: # Should not happen with static data, but good practice
-        flash("Could not load subscriptions feed (placeholder).", "warning")
+    if not subscription_videos:
+        flash("Could not load subscriptions feed. This might be due to cookie issues, YouTube changes, or no new videos.", "warning")
     return render_template('subscriptions_feed.html', videos=subscription_videos, page_title="My Subscriptions")
 
 

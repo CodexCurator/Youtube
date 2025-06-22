@@ -120,7 +120,7 @@ def get_nested(data, keys, default=None):
             return default
     return data
 
-def parse_video_data_from_script(html_content):
+def parse_video_data_from_script(html_content, context=None): # Added context
     if not html_content:
         return []
 
@@ -165,26 +165,70 @@ def parse_video_data_from_script(html_content):
     ]
 
     raw_video_items = None
-    for path in paths_to_try:
-        raw_video_items = get_nested(yt_initial_data, path)
-        if raw_video_items:
-            # print(f"Found video items at path: {path}") # Debug
-            break
 
-    # If the direct paths fail, sometimes items are nested further within sectionListRenderer
-    if not raw_video_items:
-        section_list_contents = get_nested(yt_initial_data, ['contents', 'twoColumnSearchResultsRenderer', 'primaryContents', 'sectionListRenderer', 'contents']) or \
-                                get_nested(yt_initial_data, ['contents', 'twoColumnBrowseResultsRenderer', 'tabs', 0, 'tabRenderer', 'content', 'sectionListRenderer', 'contents'])
-        if section_list_contents and isinstance(section_list_contents, list):
-            for section_content_item in section_list_contents:
-                item_section = get_nested(section_content_item, ['itemSectionRenderer', 'contents'])
-                if item_section:
-                    raw_video_items = item_section
-                    # print("Found video items in nested itemSectionRenderer.") # Debug
+    if context == "subscriptions":
+        # Subscriptions page structure often uses sectionListRenderer directly under a tab's content.
+        # Path: contents.twoColumnBrowseResultsRenderer.tabs[0].tabRenderer.content.sectionListRenderer.contents
+        # Each item in 'contents' can be an itemSectionRenderer or sometimes directly videoShelfRenderer etc.
+        # We are looking for itemSectionRenderer -> contents -> gridVideoRenderer or videoRenderer
+
+        # Try a common path for subscriptions (often the "Latest" or default view)
+        # This usually involves finding the "shelf" renderers or item section renderers
+        # within the main content area of the subscriptions tab.
+
+        # Path 1: Direct sectionListRenderer under the primary tab content
+        sections = get_nested(yt_initial_data, ['contents', 'twoColumnBrowseResultsRenderer', 'tabs', 0, 'tabRenderer', 'content', 'sectionListRenderer', 'contents'])
+        if sections and isinstance(sections, list):
+            for section in sections:
+                # Each section could be an itemSectionRenderer or a richShelfRenderer, etc.
+                # Look for itemSectionRenderer which usually holds a list of videos
+                item_section_contents = get_nested(section, ['itemSectionRenderer', 'contents'])
+                if item_section_contents and isinstance(item_section_contents, list):
+                    raw_video_items = item_section_contents # This list should contain video renderers
+                    print(f"API_PARSE(Subs): Found video items via itemSectionRenderer in subscriptions tab (Path 1). Count: {len(raw_video_items)}")
                     break
 
+                # Sometimes videos are in a "gridRenderer" within a "shelfRenderer" or "richShelfRenderer"
+                shelf_contents = get_nested(section, ['richShelfRenderer', 'contents']) \
+                                 or get_nested(section, ['shelfRenderer', 'content', 'gridRenderer', 'items']) \
+                                 or get_nested(section, ['shelfRenderer', 'content', 'expandedShelfContentsRenderer', 'items']) \
+                                 or get_nested(section, ['shelfRenderer', 'content', 'verticalListRenderer', 'items']) # Less common for main vids
+
+                if shelf_contents and isinstance(shelf_contents, list) and not raw_video_items: # Check if not already found
+                    # These items might be gridVideoRenderer or videoRenderer directly
+                    # Or they could be richItemRenderer containing them.
+                    # The main parsing loop below handles richItemRenderer vs videoRenderer.
+                    raw_video_items = shelf_contents
+                    print(f"API_PARSE(Subs): Found video items via shelf/gridRenderer in subscriptions tab (Path 1 variant). Count: {len(raw_video_items)}")
+                    break
+            if raw_video_items: # Found in the first tab's sectionListRenderer
+                 pass # Proceed to parsing loop
+            else:
+                print(f"API_PARSE(Subs): No video items found in the first tab's sectionListRenderer using common sub-paths.")
+        else:
+            print(f"API_PARSE(Subs): Could not find sectionListRenderer for subscriptions tab (Path 1 base).")
+
+    if not raw_video_items: # Fallback to general paths if subscriptions context didn't yield results or context is not 'subscriptions'
+        print(f"API_PARSE: Context '{context}' did not yield specific results or no context. Trying general paths...")
+        for path in paths_to_try: # paths_to_try was defined before for homepage/search
+            raw_video_items = get_nested(yt_initial_data, path)
+            if raw_video_items:
+                print(f"API_PARSE: Found video items at general path: {path}. Count: {len(raw_video_items)}")
+                break
+
+        if not raw_video_items: # Further fallback for general lists
+            section_list_contents = get_nested(yt_initial_data, ['contents', 'twoColumnSearchResultsRenderer', 'primaryContents', 'sectionListRenderer', 'contents']) or \
+                                    get_nested(yt_initial_data, ['contents', 'twoColumnBrowseResultsRenderer', 'tabs', 0, 'tabRenderer', 'content', 'sectionListRenderer', 'contents'])
+            if section_list_contents and isinstance(section_list_contents, list):
+                for section_content_item in section_list_contents:
+                    item_section = get_nested(section_content_item, ['itemSectionRenderer', 'contents'])
+                    if item_section:
+                        raw_video_items = item_section
+                        print(f"API_PARSE: Found video items in nested itemSectionRenderer (general fallback). Count: {len(raw_video_items)}")
+                        break
+
     if not raw_video_items or not isinstance(raw_video_items, list):
-        print("Could not find video items list in ytInitialData using known paths.")
+        print(f"API_PARSE: Could not find video items list in ytInitialData for context '{context}' using any known paths.")
         return []
 
     for item in raw_video_items:
@@ -269,36 +313,28 @@ def get_subscriptions_feed_parsed():
     This will require new logic to find the correct ytInitialData structure
     or specific API calls if any are made by the subscriptions page.
     """
-    print("API_PLACEHOLDER: get_subscriptions_feed_parsed called - returning STATIC list for now.")
-    # Simulate fetching data. In a real scenario, this would involve HTTP requests and parsing.
-    # Ensure the structure matches what `add_video_to_queue` and templates expect.
-    static_subs_videos = [
-        {
-            'video_id': 'staticSubVid1',
-            'youtube_url': 'https://www.youtube.com/watch?v=staticSubVid1',
-            'title': 'Static Subscription Video 1 - Awesome Content',
-            'thumbnail_url': 'https://i.ytimg.com/vi/dQw4w9WgXcQ/hqdefault.jpg', # Placeholder thumbnail
-            'channel_name': 'Subscribed Channel A',
-            'channel_url': '#'
-        },
-        {
-            'video_id': 'staticSubVid2',
-            'youtube_url': 'https://www.youtube.com/watch?v=staticSubVid2',
-            'title': 'Another Great Video from My Subscriptions (Static)',
-            'thumbnail_url': 'https://i.ytimg.com/vi/oHg5SJYRHA0/hqdefault.jpg', # Placeholder thumbnail
-            'channel_name': 'Favorite Creator B',
-            'channel_url': '#'
-        },
-        {
-            'video_id': 'staticSubVid3',
-            'youtube_url': 'https://www.youtube.com/watch?v=staticSubVid3',
-            'title': 'Tech Review Weekly - Static Subscription Data',
-            'thumbnail_url': 'https://i.ytimg.com/vi/jNQXAC9IVRw/hqdefault.jpg', # Placeholder thumbnail
-            'channel_name': 'Tech Channel C',
-            'channel_url': '#'
-        }
-    ]
-    return static_subs_videos
+    print("API: Attempting to fetch and parse actual subscriptions feed...")
+    cookies = load_cookies()
+    if not cookies or len(cookies) == 0:
+        print("API: No cookies loaded, cannot fetch subscriptions feed.")
+        return []
+
+    url = "https://www.youtube.com/feed/subscriptions"
+    session = requests.Session()
+    session.headers.update(BASE_HEADERS)
+    session.cookies.update(cookies)
+
+    try:
+        response = session.get(url, timeout=15)
+        response.raise_for_status()
+        # print(f"API: Subscriptions page HTML length: {len(response.text)}") # Debug
+        return parse_video_data_from_script(response.text, context="subscriptions") # Pass context for potential specific parsing
+    except requests.exceptions.RequestException as e:
+        print(f"API Error: Could not fetch subscriptions page: {e}")
+        return []
+    except Exception as e:
+        print(f"API Error: Unexpected error fetching subscriptions: {e}")
+        return []
 
 def get_more_home_videos_parsed(next_page_token=None, continuation_data=None):
     """
