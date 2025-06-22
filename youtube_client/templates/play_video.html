@@ -81,7 +81,13 @@
                        title="Process: {{ reco_video.title }}">
                         <h4>{{ reco_video.title | truncate(50) }}</h4>
                     </a>
-                    <p>{{ reco_video.channel_name | default('N/A') }}</p>
+                    <p class="channel-name">
+                        {% if reco_video.channel_url and reco_video.channel_url != '#' and reco_video.channel_url != 'N/A' %}
+                            <a href="{{ url_for('main.channel_page_route', url=reco_video.channel_url) }}">{{ reco_video.channel_name | default('N/A') }}</a>
+                        {% else %}
+                            {{ reco_video.channel_name | default('N/A') }}
+                        {% endif %}
+                    </p>
                     {# Add to Queue Button for recommended videos #}
                     <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
                             hx-vals='{"video_id": "{{ reco_video.video_id }}", "youtube_url": "{{ reco_video.youtube_url }}", "title": "{{ reco_video.title }}", "thumbnail_url": "{{ reco_video.thumbnail_url }}"}'

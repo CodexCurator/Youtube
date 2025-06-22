@@ -166,6 +166,39 @@ def load_more_home_route():
     # This will likely become an HTMX target returning a fragment
     return "Load More Home - Placeholder. This will be an HTMX fragment."
 
+@main_bp.route('/channel')
+def channel_page_route():
+    channel_url = request.args.get('url')
+    if not channel_url:
+        flash("No channel URL provided.", "error")
+        return redirect(url_for('main.index'))
+
+    # For now, get_channel_videos_parsed might return static data or needs implementation
+    # It should also ideally parse the channel name from the page or URL.
+    channel_videos = youtube_api.get_channel_videos_parsed(channel_url)
+
+    # Attempt to get a channel title for the page
+    # This is a simple heuristic, real parsing would be better.
+    channel_name_from_url = "Channel Videos"
+    try:
+        if "/@" in channel_url:
+            channel_name_from_url = channel_url.split("/@")[1].split("/")[0]
+        elif "/channel/" in channel_url:
+            channel_name_from_url = channel_url.split("/channel/")[1].split("/")[0]
+        elif "/user/" in channel_url:
+             channel_name_from_url = channel_url.split("/user/")[1].split("/")[0]
+    except IndexError:
+        pass # Keep default title
+
+    if not channel_videos:
+        flash(f"Could not load videos for channel: {channel_name_from_url}. The channel might be invalid, private, or parsing failed.", "warning")
+
+    return render_template('channel_page.html',
+                           videos=channel_videos,
+                           page_title=f"{channel_name_from_url}",
+                           channel_url=channel_url)
+
+
 @main_bp.route('/api/queue/clear', methods=['POST'])
 def clear_queue_api_route():
     """Clears all items from the video queue."""
