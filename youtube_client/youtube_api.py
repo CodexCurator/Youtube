@@ -344,9 +344,6 @@ def get_subscriptions_feed_parsed():
     This will require new logic to find the correct ytInitialData structure
     or specific API calls if any are made by the subscriptions page.
     """
-    This will require new logic to find the correct ytInitialData structure
-    or specific API calls if any are made by the subscriptions page.
-    """
     print("API: Attempting to fetch and parse actual subscriptions feed...")
     cookies = load_cookies()
     if not cookies or len(cookies) == 0:
