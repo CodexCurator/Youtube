@@ -24,9 +24,7 @@
                     <td>{{ item.video_id }}</td>
                     <td class="status-{{ item.status | lower }}">
                         {{ item.status | capitalize }}
-                        {% if item.status == 'downloading' and item.progress > 0 %}
-                            ({{ item.progress }}%) {# Progress display needs backend support #}
-                        {% endif %}
+                        {# Progress display (item.progress) removed as it's not implemented in backend yet #}
                     </td>
                     <td>
                         {% if item.status == 'completed' and item.filepath %}
