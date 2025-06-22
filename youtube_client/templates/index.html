@@ -1,30 +1,12 @@
-{% extends "base.html" %}
-
-{% block title %}Home - YouTube Client{% endblock %}
-
-{% block content %}
-    <h2>Homepage</h2>
-    <form action="{{ url_for('main.search') }}" method="get" class="search-form">
-        <input type="text" name="q" placeholder="Search YouTube...">
-        <input type="submit" value="Search">
-    </form>
-
-    <div class="video-grid">
-        <!-- Video items will be dynamically inserted here by Flask -->
-        {% if videos %}
-            {% for video in videos %}
-            <div class="video-item">
-                <a href="{{ video.url }}" target="_blank">
-                    <img src="{{ video.thumbnail }}" alt="{{ video.title }}">
-                    <h3>{{ video.title }}</h3>
-                </a>
-                <p>Channel: <a href="{{ video.channel_url }}" target="_blank">{{ video.channel_name }}</a></p>
-                <p><small>Video URL: <a href="{{ video.url }}" target="_blank">{{ video.url }}</a></small></p>
-                <p><a href="{{ url_for('main.download_video', url=video.url) }}" class="btn-download">Download</a></p>
-            </div>
-            {% endfor %}
-        {% else %}
-            <p>No videos to display. Try searching, or configure your cookies to see recommendations.</p>
-        {% endif %}
-    </div>
-{% endblock %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Minimal Test Page</title>
+</head>
+<body>
+    <h1>Test Page</h1>
+    <p>If you see this, Flask is serving templates.</p>
+    <p>Message from API: <strong>{{ message }}</strong></p>
+</body>
+</html>
