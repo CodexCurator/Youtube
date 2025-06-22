@@ -4,6 +4,7 @@ from youtube_client import youtube_api # This now has the full parsing logic
 import os
 import subprocess # For yt-dlp
 import re # For sanitizing filenames and extracting video ID
+import threading # For asynchronous downloads
 
 # print(f"app.py (full) loaded, config.SECRET_KEY: {config.SECRET_KEY}") # Debug
 # print(f"app.py (full) loaded, youtube_api: {youtube_api}") # Debug
@@ -28,6 +29,14 @@ if not os.path.exists(TEMP_VIDEOS_DIR):
     except Exception as e:
         print(f"Error creating temporary videos directory {TEMP_VIDEOS_DIR}: {e}")
         # This could be critical for the play_video functionality
+
+# Global in-memory queue for download tasks
+# Each item: {'video_id': 'xxx', 'url': 'full_url', 'title': 'yyy',
+#             'status': 'pending/downloading/completed/failed',
+#             'progress': 0, # Will be tricky to implement with subprocess.run
+#             'filepath': None, 'error_message': None, 'thread': None (optional: store thread object)}
+download_queue = []
+queue_lock = threading.Lock() # To ensure thread-safe access to the download_queue
 
 @main_bp.route('/')
 def index():
@@ -77,8 +86,10 @@ def get_video_id(url):
             return match.group(1)
     return None
 
-@main_bp.route('/play_video')
-def play_video_route():
+# This route will now handle adding to queue and starting download thread
+# It will also handle playing if already downloaded.
+@main_bp.route('/process_video_request')
+def process_video_request_route():
     video_url = request.args.get('url')
     video_title_hint = request.args.get('title', 'video') # Optional title hint for filename
 
@@ -107,98 +118,191 @@ def play_video_route():
     # Let's make the target filename fixed as VIDEO_ID.mp4 for simplicity in linking.
     # yt-dlp can transcode to mp4 if needed.
 
-    # Output filename template for yt-dlp
-    # This will save as VIDEO_ID.mp4 (or whatever extension yt-dlp chooses if mp4 merge fails)
-    # We will then construct the link to this specific filename.
-    output_filename_template = os.path.join(TEMP_VIDEOS_DIR, f"{video_id}.%(ext)s")
-    # The actual file that will be created by yt-dlp (e.g. VIDEO_ID.mp4)
-    # We need to know this to serve it. Forcing mp4 for HTML5 video player.
+    # Expected file path for the final MP4
     expected_downloaded_file_path = os.path.join(TEMP_VIDEOS_DIR, f"{video_id}.mp4")
     video_static_path = f"{TEMP_VIDEOS_STATIC_PATH}/{video_id}.mp4" # Path for HTML src
 
-    # Check if the MP4 file already exists
+    # 1. Check if already downloaded
     if os.path.exists(expected_downloaded_file_path):
-        print(f"Video {video_id}.mp4 already downloaded. Serving existing file.")
-        return render_template('play_video.html', video_file_url=url_for('static', filename=video_static_path), title=video_title_hint)
+        print(f"Video {video_id}.mp4 already downloaded. Redirecting to player.")
+        return redirect(url_for('main.player_route', video_id=video_id, title=video_title_hint))
 
-    print(f"Attempting to download video: {video_url} for playback.")
-    flash(f"Downloading '{video_title_hint}'... Please wait. This may take a moment.", "info")
+    # 2. Check if in queue (and not failed)
+    with queue_lock:
+        for item in download_queue:
+            if item['video_id'] == video_id:
+                if item['status'] == 'pending' or item['status'] == 'downloading':
+                    flash(f"'{item['title']}' is already in the download queue ({item['status']}).", "info")
+                    return redirect(request.referrer or url_for('main.index')) # Or redirect to queue page
+                elif item['status'] == 'completed': # Should have been caught by file exists check
+                    flash(f"'{item['title']}' was in queue as completed, playing now.", "info")
+                    return render_template('play_video.html',
+                                           video_file_url=url_for('static', filename=video_static_path),
+                                           title=item['title'])
+                # If 'failed', we allow re-queueing by falling through
 
-    # Force redirect to show flash message before blocking download starts
-    # This is a common pattern but a full solution often needs JS or async tasks.
-    # For now, the user experience won't be ideal as the page will hang.
-    # A better way is to have a separate "loading" page or JS polling.
-    # Let's try to render a temporary "downloading" page.
+    # 3. Add to queue and start download thread
+    new_queue_item = {
+        'video_id': video_id,
+        'url': video_url,
+        'title': video_title_hint,
+        'status': 'pending', # Initial status
+        'progress': 0,
+        'filepath': None, # Will be set upon completion
+        'error_message': None,
+        'thread': None # Will hold the thread object
+    }
 
-    # This is a synchronous download. The page will appear to hang.
+    with queue_lock:
+        # Remove any previous failed entry for this video_id before adding new one
+        download_queue[:] = [item for item in download_queue if item['video_id'] != video_id or item['status'] != 'failed']
+        download_queue.append(new_queue_item)
+
+    # Placeholder for the actual worker function (to be implemented next)
+    # def _download_video_worker(item_video_id, item_url, item_title):
+    #    print(f"WORKER_PLACEHOLDER: Starting download for {item_title} ({item_video_id})")
+    #    # Actual yt-dlp subprocess call will go here
+    #    # Update status in download_queue (using queue_lock)
+    #    pass
+
+    # For now, let's define a simple placeholder worker directly or call a function that will be fully defined later
+    # The actual _download_video_worker function will be complex, let's just start the thread
+    # with a target function that will be defined in the next step.
+
+    # We need to ensure _download_video_worker exists before starting a thread for it.
+    # I will define a placeholder for it in this file for now.
+
+    thread = threading.Thread(target=_download_video_worker_placeholder, args=(new_queue_item,))
+    new_queue_item['thread'] = thread # Store thread if needed for management
+    thread.start()
+
+    flash(f"'{video_title_hint}' has been added to the download queue.", "success")
+    # Redirect to a new queue page (to be created) or back to index/referrer
+    # For now, redirect to index. Later, redirect to a /queue page.
+    # thread = threading.Thread(target=_download_video_worker_placeholder, args=(new_queue_item,)) # Old placeholder target
+    thread = threading.Thread(target=_download_video_worker, args=(new_queue_item,))
+    new_queue_item['thread'] = thread
+    thread.start()
+
+    flash(f"'{video_title_hint}' has been added to the download queue.", "success")
+    return redirect(url_for('main.queue_page_route'))
+
+
+@main_bp.route('/queue')
+def queue_page_route():
+    # Make a copy of the queue for rendering to avoid issues if modified during render
+    # although direct iteration should be fine with the lock for status updates.
+    # For simplicity, direct access with lock during iteration is also an option for templates.
+    # However, passing a snapshot is safer.
+    with queue_lock:
+        current_queue_snapshot = list(download_queue) # Shallow copy
+    return render_template('queue.html', download_queue=current_queue_snapshot)
+
+@main_bp.route('/player/<video_id>')
+def player_route(video_id):
+    # This route assumes the video is already downloaded.
+    video_title_hint = request.args.get('title', video_id) # Get title from query param or use ID
+    expected_downloaded_file_path = os.path.join(TEMP_VIDEOS_DIR, f"{video_id}.mp4")
+    video_static_path = f"{TEMP_VIDEOS_STATIC_PATH}/{video_id}.mp4"
+
+    if os.path.exists(expected_downloaded_file_path):
+        return render_template('play_video.html',
+                               video_file_url=url_for('static', filename=video_static_path),
+                               title=video_title_hint)
+    else:
+        flash(f"Cannot play '{video_title_hint}'. File not found. Please try adding to queue again.", "error")
+        return redirect(url_for('main.queue_page_route'))
+
+
+def _download_video_worker(queue_item):
+    video_id = queue_item['video_id']
+    video_url = queue_item['url']
+    video_title = queue_item['title'] # Original title hint
+
+    # Update status to 'downloading'
+    with queue_lock:
+        for item in download_queue:
+            if item['video_id'] == video_id:
+                item['status'] = 'downloading'
+                # Potentially clear previous error message if retrying
+                item['error_message'] = None
+                break
+
+    print(f"WORKER: Starting download for '{video_title}' ({video_id}). URL: {video_url}")
+
+    output_filename_template = os.path.join(TEMP_VIDEOS_DIR, f"{video_id}.%(ext)s")
+    expected_downloaded_file_path = os.path.join(TEMP_VIDEOS_DIR, f"{video_id}.mp4")
+
+    final_status = 'failed' # Default to failed
+    error_msg_details = "Download did not complete as expected." # Default error
+
     try:
-        # Construct path to ffmpeg assuming it's in the same directory as app.py (youtube_client/)
-        # This path needs to point to the DIRECTORY containing ffmpeg.exe and ffprobe.exe
         ffmpeg_dir_path = os.path.dirname(os.path.abspath(__file__))
-        # User provided: "C:\Users\artur\Desktop\Youtube\youtube_client\ffmpeg.exe"
-        # So, ffmpeg_dir_path should indeed be the 'youtube_client' directory.
-
-        # Get absolute path to the cookie file (expected in project root)
-        # config.COOKIE_FILE_PATH is relative to project root.
-        # os.path.abspath will resolve it correctly if CWD is project root.
-        # If CWD is not project root (e.g. if script is run from elsewhere), this needs care.
-        # Assuming `python -m youtube_client.app` is run from project root, CWD is project root.
         cookie_file_abs_path = os.path.abspath(config.COOKIE_FILE_PATH)
+
+        if not os.path.exists(cookie_file_abs_path):
+            print(f"WORKER: Cookie file not found at {cookie_file_abs_path} for video {video_id}. Download may fail for restricted content.")
+            # Decide if you want to proceed without cookies or fail early
+            # For now, proceed, yt-dlp will try without.
 
         command = [
             'yt-dlp',
-            '--cookies', cookie_file_abs_path,
+            # Only add --cookies if the file exists, otherwise yt-dlp might error on missing file
+            *(['--cookies', cookie_file_abs_path] if os.path.exists(cookie_file_abs_path) else []),
             '--ffmpeg-location', ffmpeg_dir_path,
-            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', # Request MP4
-            '--merge-output-format', 'mp4', # Ensure output is mp4
-            '-o', output_filename_template, # Save as VIDEO_ID.ext (yt-dlp determines ext)
+            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+            '--merge-output-format', 'mp4',
+            '-o', output_filename_template,
             '--no-playlist',
+            '--force-overwrites', # Overwrite if previous partial download exists for this video_id
+            # '--no-warnings', # Suppress yt-dlp warnings if too noisy, but usually helpful
+            # Consider adding --write-info-json to get metadata like actual title if needed
             video_url
         ]
-        print(f"DEBUG: yt-dlp command: {' '.join(command)}") # Debugging the command
 
-        TIMEOUT_SECONDS = 300 # 5 minutes
+        print(f"WORKER: yt-dlp command for {video_id}: {' '.join(command)}")
+
+        TIMEOUT_SECONDS = 600 # Increased timeout to 10 minutes for potentially larger files
         result = subprocess.run(command, capture_output=True, text=True, check=False, encoding='utf-8', timeout=TIMEOUT_SECONDS)
 
         if result.returncode == 0:
-            # yt-dlp might have chosen a different extension if mp4 wasn't possible directly.
-            # We need to find the actual downloaded file.
-            # The output_filename_template uses %(ext)s.
-            # We need to find what file was actually created.
-            actual_downloaded_file = None
-            # A bit of a hack: list files in temp_dir that start with video_id
-            for f_name in os.listdir(TEMP_VIDEOS_DIR):
-                if f_name.startswith(video_id + "."):
-                    # If we forced mp4, this should be video_id.mp4
-                    if f_name == f"{video_id}.mp4":
-                        actual_downloaded_file = os.path.join(TEMP_VIDEOS_DIR, f_name)
-                        break
-                    # Fallback if it's not mp4 for some reason (shouldn't happen with --merge-output-format mp4)
-                    # In a more robust scenario, we'd handle this better.
-                    # For now, we strictly expect video_id.mp4 due to the command.
-
             if os.path.exists(expected_downloaded_file_path):
-                print(f"Download complete: {expected_downloaded_file_path}")
-                flash(f"'{video_title_hint}' downloaded. Now playing.", "success")
-                return render_template('play_video.html', video_file_url=url_for('static', filename=video_static_path), title=video_title_hint)
+                print(f"WORKER: Download successful for {video_id}. File: {expected_downloaded_file_path}")
+                final_status = 'completed'
+                queue_item['filepath'] = expected_downloaded_file_path
+                # Update title in queue if yt-dlp provides a better one (e.g. from --write-info-json)
+                # For now, keep original title_hint.
             else:
-                flash(f"Download completed but expected file {video_id}.mp4 not found. Output: {result.stdout} Stderr: {result.stderr}", "error")
-                return redirect(url_for('main.index'))
-
+                error_msg_details = f"yt-dlp exited successfully but expected file {video_id}.mp4 not found. stdout: {result.stdout}, stderr: {result.stderr}"
+                print(f"WORKER ERROR for {video_id}: {error_msg_details}")
         else:
-            flash(f"Download failed for '{video_title_hint}'. Error: {result.stderr or result.stdout}", "error")
-            print(f"yt-dlp stdout: {result.stdout}")
-            print(f"yt-dlp stderr: {result.stderr}")
-            return redirect(url_for('main.index'))
+            error_msg_details = f"yt-dlp failed. stderr: {result.stderr or result.stdout}"
+            print(f"WORKER ERROR for {video_id}: {error_msg_details}")
+            # Log full output for debugging specific yt-dlp issues
+            # print(f"WORKER {video_id} yt-dlp stdout: {result.stdout}")
+            # print(f"WORKER {video_id} yt-dlp stderr: {result.stderr}")
 
-    except FileNotFoundError:
-        flash("Error: yt-dlp command not found. Is it installed and in PATH?", "error")
+
+    except FileNotFoundError: # yt-dlp or ffmpeg not found
+        error_msg_details = "yt-dlp command or ffmpeg not found. Ensure they are installed and in PATH or configured correctly."
+        print(f"WORKER ERROR for {video_id}: {error_msg_details}")
     except subprocess.TimeoutExpired:
-        flash(f"Download for '{video_title_hint}' timed out.", "error")
+        error_msg_details = "Download command timed out."
+        print(f"WORKER ERROR for {video_id}: {error_msg_details}")
     except Exception as e:
-        flash(f"An unexpected error occurred during download: {str(e)}", "error")
+        error_msg_details = f"An unexpected error occurred in worker: {str(e)}"
+        print(f"WORKER ERROR for {video_id}: {error_msg_details}")
 
-    return redirect(url_for('main.index'))
+    # Final update to the queue item
+    with queue_lock:
+        for item in download_queue:
+            if item['video_id'] == video_id:
+                item['status'] = final_status
+                if final_status == 'failed':
+                    item['error_message'] = error_msg_details
+                # 'filepath' is set directly in queue_item if successful
+                break
+    print(f"WORKER: Finished processing for '{video_title}' ({video_id}). Status: {final_status}")
 
 
 def create_app():

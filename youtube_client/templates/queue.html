@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}Download Queue - YouTube Client{% endblock %}
+
+{% block content %}
+    <h2>Download Queue</h2>
+
+    {% if download_queue %}
+        <table class="queue-table">
+            <thead>
+                <tr>
+                    <th>#</th>
+                    <th>Title</th>
+                    <th>Video ID</th>
+                    <th>Status</th>
+                    <th>Details/Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for item in download_queue %}
+                <tr>
+                    <td>{{ loop.index }}</td>
+                    <td>{{ item.title | truncate(70) }}</td>
+                    <td>{{ item.video_id }}</td>
+                    <td class="status-{{ item.status | lower }}">
+                        {{ item.status | capitalize }}
+                        {% if item.status == 'downloading' and item.progress > 0 %}
+                            ({{ item.progress }}%) {# Progress display needs backend support #}
+                        {% endif %}
+                    </td>
+                    <td>
+                        {% if item.status == 'completed' and item.filepath %}
+                            <a href="{{ url_for('main.player_route', video_id=item.video_id, title=item.title) }}" class="btn-play">Play</a>
+                        {% elif item.status == 'failed' %}
+                            <span class="error-message">Error: {{ item.error_message | truncate(100) }}</span>
+                            {# Optionally, add a retry button here #}
+                            <a href="{{ url_for('main.process_video_request_route', url=item.url, title=item.title) }}" class="btn-retry">Retry</a>
+                        {% elif item.status == 'downloading' %}
+                            In progress...
+                        {% elif item.status == 'pending' %}
+                            Waiting to start...
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>The download queue is currently empty.</p>
+    {% endif %}
+
+    <p style="margin-top: 20px;">
+        <a href="{{ url_for('main.index') }}">Back to Home</a>
+        {# Add a refresh button for the queue page, or implement auto-refresh with JS later #}
+        <a href="{{ url_for('main.queue_page_route') }}" style="margin-left: 15px;">Refresh Queue</a>
+    </p>
+
+<style>
+    .queue-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    .queue-table th, .queue-table td {
+        border: 1px solid #ddd;
+        padding: 8px 12px;
+        text-align: left;
+        vertical-align: middle;
+    }
+    .queue-table th {
+        background-color: #f2f2f2;
+        font-weight: bold;
+    }
+    .queue-table tr:nth-child(even) {
+        background-color: #f9f9f9;
+    }
+    .status-completed { color: green; }
+    .status-downloading { color: blue; }
+    .status-pending { color: orange; }
+    .status-failed { color: red; }
+    .error-message { font-size: 0.9em; }
+
+    .btn-play, .btn-retry {
+        display: inline-block;
+        padding: 5px 10px;
+        font-size: 0.9em;
+        color: #fff;
+        text-decoration: none;
+        border-radius: 3px;
+        text-align: center;
+    }
+    .btn-play { background-color: #28a745; } /* Green */
+    .btn-play:hover { background-color: #218838; }
+    .btn-retry { background-color: #007bff; } /* Blue */
+    .btn-retry:hover { background-color: #0056b3; }
+</style>
+
+{% endblock %}
