@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+
+{% block title %}Playing: {{ title | default('Video') }}{% endblock %}
+
+{% block content %}
+    <h2>Playing: {{ title | default('Video') }}</h2>
+
+    {% if video_file_url %}
+        <div class="video-player-container">
+            <video id="myPlayer" controls autoplay width="100%">
+                <source src="{{ video_file_url }}" type="video/mp4">
+                Your browser does not support the video tag. You can download the video directly
+                <a href="{{ video_file_url }}">here</a>.
+            </video>
+        </div>
+        <p style="margin-top: 15px;">
+            <a href="{{ url_for('main.index') }}">Back to Home</a>
+        </p>
+        <p>
+            <small>Serving video from: {{ video_file_url }}</small>
+        </p>
+    {% else %}
+        <p>Could not load video. The file might be missing or there was an error during download.</p>
+        <p><a href="{{ url_for('main.index') }}">Back to Home</a></p>
+    {% endif %}
+
+<style>
+    .video-player-container {
+        max-width: 800px; /* Or your preferred max width */
+        margin: 20px auto; /* Center it */
+        background-color: #000; /* Black background for the player */
+    }
+    #myPlayer {
+        display: block; /* Remove extra space below video element */
+        max-height: 70vh; /* Limit height to 70% of viewport height */
+    }
+</style>
+
+{% endblock %}

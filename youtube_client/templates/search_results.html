@@ -10,7 +10,8 @@
         <div class="video-grid">
             {% for video in videos %}
             <div class="video-item">
-                <a href="{{ video.url }}" target="_blank" title="{{ video.title }}">
+                {# Link now points to our local play_video route #}
+                <a href="{{ url_for('main.play_video_route', url=video.url, title=video.title) }}" title="Play: {{ video.title }}">
                     <img src="{{ video.thumbnail }}" alt="{{ video.title }}">
                     <h3>{{ video.title | truncate(60) }}</h3>
                 </a>
@@ -21,8 +22,8 @@
                         Channel: {{ video.channel_name }}
                     {% endif %}
                 </p>
-                <p class="video-url-display"><small>Video URL: <a href="{{ video.url }}" target="_blank">{{ video.url }}</a></small></p>
-                <!-- Download button will be added in a later step -->
+                {# Keep original YouTube link for reference if desired, or remove #}
+                <p class="video-url-display"><small>Original YT: <a href="{{ video.url }}" target="_blank">{{ video.url }}</a></small></p>
             </div>
             {% endfor %}
         </div>

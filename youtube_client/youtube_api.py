@@ -57,6 +57,11 @@ def load_cookies():
         ))
 
     # print(f"Returning RequestsCookieJar with {len(cookie_jar)} cookies.")
+    if len(cookie_jar) == 0 and os.path.exists(file_path) :
+        print(f"WARNING: Cookie file {file_path} was found but no cookies were loaded into the jar. Check file format/content.")
+    # else:
+        # for cookie in cookie_jar:
+            # print(f"DEBUG_COOKIE_IN_JAR: name={cookie.name}, value={cookie.value}, domain={cookie.domain}, path={cookie.path}, secure={cookie.secure}, expires={cookie.expires}, httponly={cookie.get_nonstandard_attr('HttpOnly')}")
     return cookie_jar
 
 
@@ -64,10 +69,16 @@ def get_youtube_homepage_html(cookies_jar=None):
     url = "https://www.youtube.com/"
     session = requests.Session()
     session.headers.update(BASE_HEADERS)
-    if cookies_jar:
+    if cookies_jar and len(cookies_jar) > 0:
         session.cookies.update(cookies_jar)
+        # print("DEBUG: Cookies sent with homepage request:")
+        # for cookie in session.cookies:
+            # print(f"  {cookie.name}={cookie.value}; domain={cookie.domain}; path={cookie.path}; secure={cookie.secure}; httponly={cookie.get_nonstandard_attr('HttpOnly')}")
+    else:
+        print("DEBUG: No cookies provided or jar is empty for homepage request.")
 
     try:
+        # print(f"DEBUG: Requesting homepage URL: {url} with headers: {session.headers}")
         response = session.get(url, timeout=10)
         response.raise_for_status()
         return response.text

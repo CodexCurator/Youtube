@@ -1,0 +1,29 @@
+# Python
+*.pyc
+__pycache__/
+*.env
+venv/
+env/
+ENV/
+*.egg-info/
+dist/
+build/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# Config files (if they contain sensitive data)
+# youtube_client/config.py # We are versioning the base config.py for structure
+cookies.json
+www.youtube.com_cookies.txt # User's actual cookie file
+*.log
+
+# Temporary downloaded videos
+youtube_client/static/temp_videos/
+
+# Other
+*.tmp
+*.swp
