@@ -19,7 +19,24 @@ COOKIE_FILE_PATH = 'www.youtube.com_cookies.txt'
 # Default to assuming they are in the system PATH.
 # Users can override these by setting environment variables or modifying directly.
 YT_DLP_PATH = os.environ.get('YT_DLP_PATH', 'yt-dlp')
-FFMPEG_PATH = os.environ.get('FFMPEG_PATH', 'ffmpeg') # Path to the ffmpeg executable (not just directory)
 
-# Example of setting FFMPEG_PATH if it's bundled (adjust as needed):
-# FFMPEG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'ffmpeg', 'ffmpeg.exe') # if in project_root/bin/ffmpeg
+# --- FFMPEG Path Configuration ---
+# IMPORTANT:
+# If ffmpeg.exe and ffprobe.exe are placed directly inside the 'youtube_client' directory
+# (i.e., alongside app.py, config.py, etc.), this path should correctly point to ffmpeg.exe.
+# This assumes config.py is in the 'youtube_client' directory.
+_ffmpeg_executable_name = 'ffmpeg.exe' if os.name == 'nt' else 'ffmpeg'
+FFMPEG_PATH_CANDIDATE = os.path.join(os.path.dirname(os.path.abspath(__file__)), _ffmpeg_executable_name)
+
+if os.path.exists(FFMPEG_PATH_CANDIDATE):
+    FFMPEG_PATH = FFMPEG_PATH_CANDIDATE
+    print(f"CONFIG: Found bundled ffmpeg at: {FFMPEG_PATH}")
+else:
+    # Fallback to environment variable or assuming it's in PATH
+    FFMPEG_PATH = os.environ.get('FFMPEG_PATH', 'ffmpeg')
+    print(f"CONFIG: Bundled ffmpeg not found at '{FFMPEG_PATH_CANDIDATE}'. Using FFMPEG_PATH: '{FFMPEG_PATH}' (relies on PATH or explicit env var).")
+
+# Example of setting FFMPEG_PATH if it's bundled elsewhere (adjust as needed):
+# Example: if in project_root/bin/ffmpeg/ffmpeg.exe and config.py is in youtube_client/
+# _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# FFMPEG_PATH = os.path.join(_project_root, 'bin', 'ffmpeg', 'ffmpeg.exe')
