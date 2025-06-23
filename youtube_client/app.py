@@ -87,23 +87,34 @@ def handle_cookie_update_on_startup():
     source_cookie_path_abs = os.path.normpath(USER_COOKIE_DOWNLOAD_PATH)
     operational_cookie_file_abs_path = os.path.abspath(config.COOKIE_FILE_PATH)
 
-    _operational_cookies_ready = False # Assume not ready until successfully processed
     _stop_cookie_polling.clear() # Reset stop event for poller
 
-    # 1. Always delete any existing operational cookie file from previous session.
-    if os.path.exists(operational_cookie_file_abs_path):
-        try:
-            os.remove(operational_cookie_file_abs_path)
-            print(f"STARTUP_COOKIE_CHECK: Deleted existing operational cookie file: '{operational_cookie_file_abs_path}'.")
-        except OSError as e:
-            print(f"STARTUP_COOKIE_CHECK: Error deleting existing operational cookie file '{operational_cookie_file_abs_path}': {e}")
-            # If we can't delete it, we might have issues writing the new one.
+    # 1. Check if a valid operational cookie file already exists from a previous session (e.g., before a Flask reload)
+    if os.path.exists(operational_cookie_file_abs_path) and check_operational_cookie_file_validity(operational_cookie_file_abs_path):
+        print(f"STARTUP_COOKIE_CHECK: Found existing valid operational cookie file: '{operational_cookie_file_abs_path}'.")
+        _operational_cookies_ready = True
+    else:
+        _operational_cookies_ready = False
+        if os.path.exists(operational_cookie_file_abs_path): # File exists but is not valid
+            print(f"STARTUP_COOKIE_CHECK: Found existing operational cookie file but it's invalid/empty. Deleting: '{operational_cookie_file_abs_path}'.")
+            try:
+                os.remove(operational_cookie_file_abs_path)
+            except OSError as e:
+                print(f"STARTUP_COOKIE_CHECK: Error deleting invalid operational cookie file: {e}")
 
-    # 2. Check for the source cookie file.
+    # 2. Check for a new source cookie file. If present, it overrides any existing operational one.
     if os.path.exists(source_cookie_path_abs):
-        print(f"STARTUP_COOKIE_CHECK: New cookie file found at '{source_cookie_path_abs}'. Processing...")
+        print(f"STARTUP_COOKIE_CHECK: New source cookie file found at '{source_cookie_path_abs}'. Processing (will overwrite if existing)...")
+        # Delete existing operational file before processing new source to ensure clean state
+        if os.path.exists(operational_cookie_file_abs_path):
+            try:
+                os.remove(operational_cookie_file_abs_path)
+                print(f"STARTUP_COOKIE_CHECK: Deleted existing operational cookie before processing new source: '{operational_cookie_file_abs_path}'.")
+            except OSError as e:
+                print(f"STARTUP_COOKIE_CHECK: Error deleting existing operational cookie file prior to source processing: {e}")
+
         if cookie_processor.process_new_cookie_file(source_cookie_path_abs, operational_cookie_file_abs_path):
-            print(f"STARTUP_COOKIE_CHECK: Successfully processed. Operational cookies at '{operational_cookie_file_abs_path}' created/updated.")
+            print(f"STARTUP_COOKIE_CHECK: Successfully processed source. Operational cookies at '{operational_cookie_file_abs_path}' created/updated.")
             try:
                 os.remove(source_cookie_path_abs) # Always delete source after successful processing
                 print(f"STARTUP_COOKIE_CHECK: Source cookie file '{source_cookie_path_abs}' deleted.")
@@ -112,21 +123,19 @@ def handle_cookie_update_on_startup():
             _operational_cookies_ready = check_operational_cookie_file_validity(operational_cookie_file_abs_path)
         else:
             print(f"STARTUP_COOKIE_CHECK: Failed to process new cookie file from '{source_cookie_path_abs}'.")
-            # Try to delete the problematic source file to avoid reprocessing it if it's malformed
-            try:
+            try: # Attempt to delete potentially corrupt source
                 os.remove(source_cookie_path_abs)
                 print(f"STARTUP_COOKIE_CHECK: (Potentially corrupt) Source cookie file '{source_cookie_path_abs}' deleted after failed processing.")
             except OSError as e:
                 print(f"STARTUP_COOKIE_CHECK: Error deleting (potentially corrupt) source cookie file '{source_cookie_path_abs}': {e}")
-            _operational_cookies_ready = False # Explicitly false due to processing failure
-    else: # Source does not exist
-        print(f"STARTUP_COOKIE_CHECK: No new cookie file found at '{source_cookie_path_abs}'.")
-        _operational_cookies_ready = False
+            _operational_cookies_ready = False # Explicitly false due to source processing failure
+    else: # Source does not exist (and we might have loaded an existing operational cookie in step 1)
+        print(f"STARTUP_COOKIE_CHECK: No new source cookie file found at '{source_cookie_path_abs}'. Using existing operational status: {_operational_cookies_ready}")
 
+    # 3. Start poller if cookies are still not ready
     if not _operational_cookies_ready:
-        print("STARTUP_COOKIE_CHECK: Operational cookies are not ready. Starting background poller for new cookies.")
+        print("STARTUP_COOKIE_CHECK: Operational cookies are not ready. Starting background poller for new source cookies.")
         print(f"STARTUP_COOKIE_CHECK: Please place your cookies.txt file at: {source_cookie_path_abs}")
-        # Ensure only one poller thread runs
         if _cookie_polling_thread is None or not _cookie_polling_thread.is_alive():
             _cookie_polling_thread = threading.Thread(target=_cookie_polling_worker_func, daemon=True)
             _cookie_polling_thread.start()
@@ -134,7 +143,7 @@ def handle_cookie_update_on_startup():
             print("STARTUP_COOKIE_CHECK: Cookie poller thread already running (should not happen here).")
     else:
         print(f"STARTUP_COOKIE_CHECK: Operational cookies are ready. Using: '{operational_cookie_file_abs_path}'")
-        _stop_cookie_polling.set() # Ensure any old poller (if somehow alive) is signalled to stop
+        _stop_cookie_polling.set() # Ensure any old poller is signalled to stop
 
 # Blueprint and other app setup follows...
 main_bp = Blueprint('main', __name__, template_folder='templates', static_folder='static')
@@ -605,7 +614,17 @@ def _download_video_worker(item_video_id):
         # Ensure the output directory exists
         os.makedirs(os.path.dirname(output_filename_template), exist_ok=True)
 
-        result = subprocess.run(command, capture_output=True, text=True, check=False, encoding='utf-8', timeout=TIMEOUT_SECONDS)
+        # Try to force utf-8 output from yt-dlp and handle potential decoding errors more gracefully
+        # Also, yt-dlp might have an '--encoding' option, but let's handle Python's side first.
+        try:
+            result = subprocess.run(command, capture_output=True, text=True, check=False, encoding='utf-8', errors='replace', timeout=TIMEOUT_SECONDS)
+        except UnicodeDecodeError: # Should be caught by errors='replace', but as a fallback
+            app.logger.warning(f"WORKER: UnicodeDecodeError encountered even with errors='replace' for {item_video_id}. Retrying with raw bytes.")
+            result_bytes = subprocess.run(command, capture_output=True, check=False, timeout=TIMEOUT_SECONDS)
+            stdout_str = result_bytes.stdout.decode('utf-8', errors='replace') if result_bytes.stdout else ""
+            stderr_str = result_bytes.stderr.decode('utf-8', errors='replace') if result_bytes.stderr else ""
+            result = subprocess.CompletedProcess(args=command, returncode=result_bytes.returncode, stdout=stdout_str, stderr=stderr_str)
+
 
         if result.returncode == 0:
             if os.path.exists(expected_downloaded_file_path):
