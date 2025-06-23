@@ -198,15 +198,15 @@ def _parse_video_renderer_item(renderer):
             if channel_name: break
 
     duration_text_obj = renderer.get('lengthText', {})
-    duration_text = duration_text_obj.get('simpleText') or "".join(r.get('text','') for r in duration_text_obj.get('runs', default=[]))
+    duration_text = duration_text_obj.get('simpleText') or "".join(r.get('text','') for r in duration_text_obj.get('runs', [])) # Fixed: default=[] to []
     if not duration_text:
          overlay_time_status = get_nested(renderer,['thumbnailOverlays',0,'thumbnailOverlayTimeStatusRenderer','text'])
          if overlay_time_status:
-            duration_text = overlay_time_status.get('simpleText') or "".join(r.get('text','') for r in overlay_time_status.get('runs', default=[]))
+            duration_text = overlay_time_status.get('simpleText') or "".join(r.get('text','') for r in overlay_time_status.get('runs', [])) # Fixed: default=[] to []
 
     published_time_text_obj = renderer.get('publishedTimeText', {})
     published_time_text = published_time_text_obj.get('simpleText') or \
-                          "".join(r.get('text','') for r in published_time_text_obj.get('runs', default=[]))
+                          "".join(r.get('text','') for r in published_time_text_obj.get('runs', [])) # Fixed: default=[] to []
 
     return {
         'video_id': video_id,
