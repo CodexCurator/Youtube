@@ -493,8 +493,10 @@ def process_video_request_route():
     added_or_updated = database.add_video_to_queue(video_id, video_url, video_title_hint, thumbnail_url_hint)
 
     if added_or_updated:
-        # Pass video_id to worker, it will fetch details from DB
-        thread = threading.Thread(target=_download_video_worker, args=(video_id,))
+        # Pass video_id and current cookie readiness state to worker
+        # This captures the cookie state at the moment of dispatch
+        current_cookie_readiness_at_dispatch = _operational_cookies_ready
+        thread = threading.Thread(target=_download_video_worker, args=(video_id, current_cookie_readiness_at_dispatch))
         thread.start()
         flash(f"'{video_title_hint}' has been added/updated in the download queue.", "success")
     else:
@@ -532,8 +534,9 @@ def player_route(video_id):
              database.update_video_status(video_id, 'failed', error_message="File missing or status incorrect for playback.")
         return redirect(url_for('main.queue_page_route'))
 
-def _download_video_worker(item_video_id):
-    global _operational_cookies_ready # Worker might update this if it's the poller, but primary worker shouldn't
+def _download_video_worker(item_video_id, cookies_are_operational_at_dispatch_time):
+    # Removed: global _operational_cookies_ready
+    # The state of cookie readiness at the time of dispatch is passed as an argument.
     try:
         video_item = database.get_video_by_id(item_video_id)
         if not video_item:
@@ -567,11 +570,15 @@ def _download_video_worker(item_video_id):
     try:
         cookie_file_abs_path = os.path.abspath(config.COOKIE_FILE_PATH)
 
-        use_cookies_for_yt_dlp = _operational_cookies_ready and check_operational_cookie_file_validity(cookie_file_abs_path)
+        # Use the passed 'cookies_are_operational_at_dispatch_time' and also check current file validity
+        # This ensures that even if the flag was true at dispatch, the file itself is still currently valid.
+        current_file_is_valid = check_operational_cookie_file_validity(cookie_file_abs_path)
+        use_cookies_for_yt_dlp = cookies_are_operational_at_dispatch_time and current_file_is_valid
+
         if use_cookies_for_yt_dlp:
-             print(f"WORKER: Using operational cookies for {item_video_id}: {cookie_file_abs_path}")
+             print(f"WORKER: Using operational cookies for {item_video_id} (Dispatched as Ready: {cookies_are_operational_at_dispatch_time}, Current File Valid: {current_file_is_valid}): {cookie_file_abs_path}")
         else:
-             print(f"WORKER: Not using cookies for {item_video_id} (operational_cookies_ready: {_operational_cookies_ready}, file valid: {check_operational_cookie_file_validity(cookie_file_abs_path)})")
+             print(f"WORKER: Not using cookies for {item_video_id} (Dispatched as Ready: {cookies_are_operational_at_dispatch_time}, Current File Valid: {current_file_is_valid})")
 
         command = [
             config.YT_DLP_PATH, # Use configured path for yt-dlp
@@ -581,9 +588,11 @@ def _download_video_worker(item_video_id):
         # yt-dlp can take either the path to the executable or the directory.
         if config.FFMPEG_PATH and config.FFMPEG_PATH.lower() != 'ffmpeg':
             command.extend(['--ffmpeg-location', config.FFMPEG_PATH])
-            print(f"WORKER: Using specific ffmpeg location: {config.FFMPEG_PATH}")
+            print(f"WORKER: Using specific ffmpeg location from config: '{config.FFMPEG_PATH}'")
         else:
-            print(f"WORKER: Assuming ffmpeg is in system PATH or yt-dlp will find it.")
+            # Relying on yt-dlp to find ffmpeg in PATH
+            print(f"WORKER: FFMPEG_PATH in config is '{config.FFMPEG_PATH}', relying on system PATH for ffmpeg.")
+            print(f"WORKER: For merging to work, ensure ffmpeg is in your system PATH OR configure FFMPEG_PATH in youtube_client/config.py to the full ffmpeg executable path.")
 
         # Conditionally add cookie arguments
         cookie_arguments = []
