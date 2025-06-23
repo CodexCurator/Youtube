@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page_title | default("Channel") }} - YouTube Client{% endblock %}
+
+{% block content %}
+    <h2>{{ page_title | default("Channel Videos") }}</h2>
+    <p><small>Viewing: <a href="{{ channel_url }}" target="_blank">{{ channel_url }}</a></small></p>
+
+    {% if videos %}
+        <div class="video-grid">
+            {% for video in videos %}
+            <div class="video-item">
+                <a href="{{ url_for('main.process_video_request_route', url=video.youtube_url, title=video.title, thumbnail=video.thumbnail_url) }}"
+                   title="Process: {{ video.title }}">
+                    <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}">
+                    <h3>{{ video.title | truncate(60) }}</h3>
+                </a>
+                <p class="channel-name">
+                    {# Channel name for videos on a channel page is usually the channel itself #}
+                    Channel: {{ video.channel_name | default('N/A') }}
+                </p>
+                <p class="video-meta-data"><small>
+                    {% if video.duration_text and video.duration_text != 'N/A' %}{{ video.duration_text }}{% endif %}
+                    {% if video.duration_text and video.duration_text != 'N/A' and video.published_time_text and video.published_time_text != 'N/A' %} - {% endif %}
+                    {% if video.published_time_text and video.published_time_text != 'N/A' %}{{ video.published_time_text }}{% endif %}
+                </small></p>
+                <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
+                        hx-vals='{"video_id": "{{ video.video_id }}", "youtube_url": "{{ video.youtube_url }}", "title": "{{ video.title }}", "thumbnail_url": "{{ video.thumbnail_url }}"}'
+                        hx-swap="none"
+                        class="btn-add-queue">
+                    Add to Queue
+                </button>
+                <p class="video-url-display"><small>Original YT: <a href="{{ video.youtube_url }}" target="_blank">{{ video.youtube_url }}</a></small></p>
+            </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <p>No videos found for this channel (or content is static placeholder data).</p>
+    {% endif %}
+
+    {# Placeholder for "Load More" button for channel videos - to be implemented later #}
+    {# {% if continuation_token %}
+        <button hx-get="{{ url_for('main.load_more_channel_videos_route', channel_url=channel_url, token=continuation_token) }}"
+                hx-swap="beforeend"
+                hx-target=".video-grid">
+            Load More Channel Videos
+        </button>
+    {% endif %} #}
+{% endblock %}

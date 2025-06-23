@@ -31,6 +31,11 @@
                         class="btn-add-queue">
                     Add to Queue
                 </button>
+                <p class="video-meta-data"><small>
+                    {% if video.duration_text and video.duration_text != 'N/A' %}{{ video.duration_text }}{% endif %}
+                    {% if video.duration_text and video.duration_text != 'N/A' and video.published_time_text and video.published_time_text != 'N/A' %} - {% endif %}
+                    {% if video.published_time_text and video.published_time_text != 'N/A' %}{{ video.published_time_text }}{% endif %}
+                </small></p>
                 <p class="video-url-display"><small>Original YT: <a href="{{ video.youtube_url }}" target="_blank">{{ video.youtube_url }}</a></small></p>
             </div>
             {% endfor %}
