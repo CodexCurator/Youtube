@@ -218,10 +218,66 @@ def channel_page_route():
 
 @main_bp.route('/load_more_home') # This is a UI route, API routes should be under /api/
 def load_more_home_route():
-    # This will be an HTMX target returning an HTML fragment.
-    # For now, it's a placeholder.
-    # Actual implementation will be an API endpoint like /api/load_more/home
-    return "Load More Home - Placeholder. This will be an HTMX fragment."
+    # This was a placeholder UI route, now we implement the API version
+    pass # Will be replaced by the actual API route below
+
+
+# --- API Routes for HTMX "Load More" ---
+@main_bp.route('/api/load_more/home')
+def api_load_more_home_route():
+    token = request.args.get('token')
+    # print(f"API: /api/load_more/home called with token: {token}") # Debug
+    data = youtube_api.get_more_home_videos_parsed(continuation_data=token)
+    videos = data.get('videos', [])
+    next_token = data.get('continuation_token')
+    # This will render a partial template with new videos
+    # and an OOB swap for the button itself with the new token.
+    return render_template('_video_card_list.html', videos=videos,
+                           continuation_token=next_token,
+                           current_page_type='home',
+                           api_load_route='main.api_load_more_home_route')
+
+
+@main_bp.route('/api/load_more/subscriptions')
+def api_load_more_subscriptions_route():
+    token = request.args.get('token')
+    # print(f"API: /api/load_more/subscriptions called with token: {token}") # Debug
+    data = youtube_api.get_more_subscriptions_videos_parsed(continuation_data=token)
+    videos = data.get('videos', [])
+    next_token = data.get('continuation_token')
+    return render_template('_video_card_list.html', videos=videos,
+                           continuation_token=next_token,
+                           current_page_type='subscriptions',
+                           api_load_route='main.api_load_more_subscriptions_route')
+
+@main_bp.route('/api/load_more/channel')
+def api_load_more_channel_route():
+    token = request.args.get('token')
+    channel_url = request.args.get('channel_url') # Important for context
+    # print(f"API: /api/load_more/channel for {channel_url} with token: {token}") # Debug
+    data = youtube_api.get_more_channel_videos_parsed(channel_url=channel_url, continuation_data=token)
+    videos = data.get('videos', [])
+    next_token = data.get('continuation_token')
+    return render_template('_video_card_list.html', videos=videos,
+                           continuation_token=next_token,
+                           current_page_type='channel',
+                           channel_url=channel_url, # Pass back for next button
+                           api_load_route='main.api_load_more_channel_route')
+
+@main_bp.route('/api/load_more/recommendations')
+def api_load_more_recommendations_route():
+    token = request.args.get('token')
+    video_id = request.args.get('video_id') # Context for recommendations
+    # print(f"API: /api/load_more/recommendations for video {video_id} with token: {token}") # Debug
+    data = youtube_api.get_more_recommended_videos_parsed(current_video_id=video_id, continuation_data=token)
+    videos = data.get('videos', [])
+    next_token = data.get('continuation_token')
+    # Recommended videos might need a different partial if layout is different
+    return render_template('_video_card_list.html', videos=videos,
+                           continuation_token=next_token,
+                           current_page_type='recommendations',
+                           video_id=video_id, # Pass back for next button context
+                           api_load_route='main.api_load_more_recommendations_route')
 
 
 @main_bp.route('/api/queue/clear', methods=['POST'])
@@ -470,13 +526,16 @@ def _download_video_worker(item_video_id):
             return
 
         video_url = video_item['youtube_url']
-        video_title = video_item['title']
+        video_title = video_item['title'] # Use title from DB for consistency
+
+        print(f"WORKER: Fetched from DB for video_id '{item_video_id}': title='{video_title}', url='{video_url}', current_status='{video_item['status']}'")
+
         database.update_video_status(item_video_id, 'downloading')
     except Exception as e_db_initial:
         print(f"WORKER: DB error for {item_video_id} at start: {e_db_initial}")
         try:
             database.update_video_status(item_video_id, 'failed', error_message=f"DB error at worker start: {str(e_db_initial)}")
-        except Exception: pass
+        except Exception: pass # Avoid error loops if DB is truly unavailable
         return
 
     print(f"WORKER: Starting download for '{video_title}' ({item_video_id}). URL: {video_url}")
