@@ -258,7 +258,7 @@ def get_subscriptions_feed_parsed(limit=30):
         return {'videos': [], 'continuation_token': None}
     html_content = _make_yt_request("https://www.youtube.com/feed/subscriptions", cookies)
     if html_content:
-        return parse_video_data_from_script(response.text, context="subscriptions", limit=limit) # Error was here: response not defined
+        return parse_video_data_from_script(html_content, context="subscriptions", limit=limit) # Corrected to use html_content
     print("API: Failed to get subscriptions page HTML.")
     return {'videos': [], 'continuation_token': None}
 
