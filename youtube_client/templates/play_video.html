@@ -88,6 +88,11 @@
                             {{ reco_video.channel_name | default('N/A') }}
                         {% endif %}
                     </p>
+                    <p class="video-meta-data-small"><small>
+                        {% if reco_video.duration_text and reco_video.duration_text != 'N/A' %}{{ reco_video.duration_text }}{% endif %}
+                        {% if reco_video.duration_text and reco_video.duration_text != 'N/A' and reco_video.published_time_text and reco_video.published_time_text != 'N/A' %} - {% endif %}
+                        {% if reco_video.published_time_text and reco_video.published_time_text != 'N/A' %}{{ reco_video.published_time_text }}{% endif %}
+                    </small></p>
                     {# Add to Queue Button for recommended videos #}
                     <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
                             hx-vals='{"video_id": "{{ reco_video.video_id }}", "youtube_url": "{{ reco_video.youtube_url }}", "title": "{{ reco_video.title }}", "thumbnail_url": "{{ reco_video.thumbnail_url }}"}'

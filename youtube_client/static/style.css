@@ -231,6 +231,12 @@ header #branding h1 {
     margin-top: 5px;
 }
 
+.video-meta-data-small { /* For recommended videos list */
+    font-size: 0.8em;
+    color: #666;
+    margin-bottom: 5px;
+}
+
 /* Footer */
 footer {
     text-align: center;

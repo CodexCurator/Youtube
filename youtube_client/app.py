@@ -145,77 +145,83 @@ TEMP_VIDEOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stat
 def index():
     videos = []
     continuation_token = None
+    page_type = 'home' # For "Load More" button context in template
     if _operational_cookies_ready:
-        home_data = youtube_api.get_homepage_videos_parsed(limit=30) # Pass limit
-        if home_data and isinstance(home_data, dict):
-            videos = home_data.get('videos', [])
-            continuation_token = home_data.get('continuation_token')
+        data = youtube_api.get_homepage_videos_parsed(limit=30)
+        if data and isinstance(data, dict):
+            videos = data.get('videos', [])
+            continuation_token = data.get('continuation_token')
 
-        if not videos: # Check after trying to parse
-            flash("Cookies seem loaded, but could not fetch homepage videos. Cookies might be invalid, YouTube structure changed, or no videos found.", "warning")
+        if not videos:
+            flash("Cookies seem loaded, but could not fetch homepage videos. Possible YouTube structure change or no videos found.", "warning")
     else:
          flash(f"Cookies not loaded. Waiting for cookie file at {USER_COOKIE_DOWNLOAD_PATH}", "warning")
-    return render_template('index.html', videos=videos, continuation_token=continuation_token, current_page_type='home')
+    return render_template('index.html', videos=videos, continuation_token=continuation_token, current_page_type=page_type)
 
 @main_bp.route('/subscriptions')
 def subscriptions_feed_route():
-    subscription_videos = []
+    videos = []
     continuation_token = None
+    page_type = 'subscriptions'
     if _operational_cookies_ready:
-        subscriptions_data = youtube_api.get_subscriptions_feed_parsed() # limit is already 30 in API
-        if subscriptions_data and isinstance(subscriptions_data, dict):
-            subscription_videos = subscriptions_data.get('videos', [])
-            continuation_token = subscriptions_data.get('continuation_token')
+        data = youtube_api.get_subscriptions_feed_parsed() # API has internal limit
+        if data and isinstance(data, dict):
+            videos = data.get('videos', [])
+            continuation_token = data.get('continuation_token')
 
-        if not subscription_videos:
-            flash("Could not load subscriptions feed. This might be due to cookie issues, YouTube changes, or no new videos from subscriptions.", "warning")
+        if not videos:
+            flash("Could not load subscriptions feed. Possible cookie issue, YouTube change, or no new subscription videos.", "warning")
     else:
         flash(f"Cookies not loaded. Cannot fetch subscriptions. Waiting for cookie file at {USER_COOKIE_DOWNLOAD_PATH}", "warning")
 
     return render_template('subscriptions_feed.html',
-                           videos=subscription_videos,
+                           videos=videos,
                            page_title="My Subscriptions",
                            continuation_token=continuation_token,
-                           current_page_type='subscriptions')
-
-
-@main_bp.route('/load_more_home')
-def load_more_home_route():
-    # Placeholder - will use youtube_api.get_more_home_videos_parsed()
-    # This will likely become an HTMX target returning a fragment
-    return "Load More Home - Placeholder. This will be an HTMX fragment."
+                           current_page_type=page_type)
 
 @main_bp.route('/channel')
 def channel_page_route():
     channel_url = request.args.get('url')
+    videos = []
+    continuation_token = None
+    page_type = 'channel' # For "Load More"
+
+    # Simple heuristic for page title from URL, can be refined
+    channel_name_from_url = "Channel"
+    if channel_url:
+        try:
+            if "/@" in channel_url: channel_name_from_url = channel_url.split("/@")[1].split("/")[0]
+            elif "/channel/": channel_name_from_url = channel_url.split("/channel/")[1].split("/")[0]
+            elif "/user/": channel_name_from_url = channel_url.split("/user/")[1].split("/")[0]
+        except IndexError: pass
+
     if not channel_url:
         flash("No channel URL provided.", "error")
         return redirect(url_for('main.index'))
 
-    # For now, get_channel_videos_parsed might return static data or needs implementation
-    # It should also ideally parse the channel name from the page or URL.
-    channel_videos = youtube_api.get_channel_videos_parsed(channel_url)
+    data = youtube_api.get_channel_videos_parsed(channel_url, limit=30)
+    if data and isinstance(data, dict):
+        videos = data.get('videos', [])
+        continuation_token = data.get('continuation_token')
 
-    # Attempt to get a channel title for the page
-    # This is a simple heuristic, real parsing would be better.
-    channel_name_from_url = "Channel Videos"
-    try:
-        if "/@" in channel_url:
-            channel_name_from_url = channel_url.split("/@")[1].split("/")[0]
-        elif "/channel/" in channel_url:
-            channel_name_from_url = channel_url.split("/channel/")[1].split("/")[0]
-        elif "/user/" in channel_url:
-             channel_name_from_url = channel_url.split("/user/")[1].split("/")[0]
-    except IndexError:
-        pass # Keep default title
-
-    if not channel_videos:
-        flash(f"Could not load videos for channel: {channel_name_from_url}. The channel might be invalid, private, or parsing failed.", "warning")
+    if not videos:
+        flash(f"Could not load videos for channel: {channel_name_from_url}. Channel may be invalid or parsing failed.", "warning")
 
     return render_template('channel_page.html',
-                           videos=channel_videos,
+                           videos=videos,
                            page_title=f"{channel_name_from_url}",
-                           channel_url=channel_url)
+                           channel_url=channel_url, # Pass original channel_url for "Load More" context
+                           continuation_token=continuation_token,
+                           current_page_type=page_type)
+
+
+@main_bp.route('/load_more_home') # This is a UI route, API routes should be under /api/
+def load_more_home_route():
+    # This will be an HTMX target returning an HTML fragment.
+    # For now, it's a placeholder.
+    # Actual implementation will be an API endpoint like /api/load_more/home
+    return "Load More Home - Placeholder. This will be an HTMX fragment."
 
 
 @main_bp.route('/api/queue/clear', methods=['POST'])
