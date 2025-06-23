@@ -585,18 +585,26 @@ def _download_video_worker(item_video_id):
         else:
             print(f"WORKER: Assuming ffmpeg is in system PATH or yt-dlp will find it.")
 
-        command.extend([
-            *(['--cookies', cookie_file_abs_path] if use_cookies_for_yt_dlp else []),
+        # Conditionally add cookie arguments
+        cookie_arguments = []
+        if use_cookies_for_yt_dlp:
+            cookie_arguments.extend(['--cookies', cookie_file_abs_path])
+
+        command.extend(cookie_arguments + [
             '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', # Standard format selection
             '--merge-output-format', 'mp4', # Ensure output is mp4 after merge
             '-o', output_filename_template, # Output template
             '--no-playlist',
             '--force-overwrites',
             video_url
-        ]
+        ])
 
         print(f"WORKER: yt-dlp command for {item_video_id}: {' '.join(command)}")
         TIMEOUT_SECONDS = 600
+
+        # Ensure the output directory exists
+        os.makedirs(os.path.dirname(output_filename_template), exist_ok=True)
+
         result = subprocess.run(command, capture_output=True, text=True, check=False, encoding='utf-8', timeout=TIMEOUT_SECONDS)
 
         if result.returncode == 0:
