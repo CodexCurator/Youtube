@@ -1,0 +1,67 @@
+{# This template is used by HTMX to append more videos #}
+{% for video in videos %}
+<div class="video-card" id="video-{{ video.video_id }}">
+    <div class="thumbnail-container">
+        <a href="{{ url_for('main.process_video_request_route', url=video.youtube_url, title=video.title, thumbnail=video.thumbnail_url) }}"
+           title="Watch/Process: {{ video.title }}">
+            <img src="{{ video.thumbnail_url if video.thumbnail_url else url_for('static', filename='placeholder.png') }}"
+                 alt="{{ video.title }}" class="thumbnail"
+                 onerror="this.onerror=null; this.src='{{ url_for('static', filename='placeholder.png') }}';">
+            {% if video.duration_text and video.duration_text != 'N/A' %}
+                <span class="duration-badge">{{ video.duration_text }}</span>
+            {% endif %}
+        </a>
+    </div>
+    <div class="video-info">
+        <h4 class="video-title">
+            <a href="{{ url_for('main.process_video_request_route', url=video.youtube_url, title=video.title, thumbnail=video.thumbnail_url) }}"
+               title="{{ video.title }}">
+                {{ video.title | truncate(70) }}
+            </a>
+        </h4>
+        <p class="channel-name">
+            {% if video.channel_url and video.channel_url != '#' and video.channel_url != 'N/A' and video.channel_name and video.channel_name != 'N/A' %}
+                <a href="{{ url_for('main.channel_page_route', url=video.channel_url) }}">{{ video.channel_name }}</a>
+            {% else %}
+                {{ video.channel_name | default('N/A') }}
+            {% endif %}
+        </p>
+        <p class="video-meta-data-small">
+            <small>
+                {# View count could go here if parsed #}
+                {% if video.published_time_text and video.published_time_text != 'N/A' %}
+                    {{ video.published_time_text }}
+                {% endif %}
+            </small>
+        </p>
+        <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
+                hx-vals='{"video_id": "{{ video.video_id }}", "youtube_url": "{{ video.youtube_url }}", "title": "{{ video.title | replace('"', "'") }}", "thumbnail_url": "{{ video.thumbnail_url }}"}'
+                hx-swap="none" {# Or target a notification area #}
+                class="btn-add-queue btn-small">
+            Add to Queue
+        </button>
+    </div>
+</div>
+{% endfor %}
+
+{# This part appends the new "Load More" button if there's a next token #}
+{# It uses an OOB (Out-Of-Band) swap to replace the existing button #}
+{% if continuation_token %}
+<div id="load-more-{{ current_page_type }}-trigger" hx-swap-oob="true">
+    <button hx-get="{{ url_for(api_load_route, token=continuation_token, channel_url=channel_url if channel_url else None, video_id=video_id if video_id else None) }}"
+            hx-target="#video-grid-{{ current_page_type }}"
+            hx-swap="beforeend"
+            hx-indicator="#loading-spinner-{{ current_page_type }}"
+            class="btn-load-more">
+        Load More ({{ current_page_type }})
+    </button>
+    <div id="loading-spinner-{{ current_page_type }}" class="htmx-indicator">
+        Loading...
+    </div>
+</div>
+{% else %}
+{# If no more continuation token, remove the button or show "No more videos" #}
+<div id="load-more-{{ current_page_type }}-trigger" hx-swap-oob="true">
+    <p>No more videos to load.</p>
+</div>
+{% endif %}

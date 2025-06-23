@@ -14,3 +14,12 @@ COOKIE_FILE_PATH = 'www.youtube.com_cookies.txt'
 # COOKIE_FORMAT = 'netscape' # 'json' or 'netscape'
 
 # print(f"config.py loaded. COOKIE_FILE_PATH set to: {COOKIE_FILE_PATH}")
+
+# Paths for yt-dlp and ffmpeg
+# Default to assuming they are in the system PATH.
+# Users can override these by setting environment variables or modifying directly.
+YT_DLP_PATH = os.environ.get('YT_DLP_PATH', 'yt-dlp')
+FFMPEG_PATH = os.environ.get('FFMPEG_PATH', 'ffmpeg') # Path to the ffmpeg executable (not just directory)
+
+# Example of setting FFMPEG_PATH if it's bundled (adjust as needed):
+# FFMPEG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'bin', 'ffmpeg', 'ffmpeg.exe') # if in project_root/bin/ffmpeg

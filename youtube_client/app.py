@@ -156,7 +156,11 @@ def index():
             flash("Cookies seem loaded, but could not fetch homepage videos. Possible YouTube structure change or no videos found.", "warning")
     else:
          flash(f"Cookies not loaded. Waiting for cookie file at {USER_COOKIE_DOWNLOAD_PATH}", "warning")
-    return render_template('index.html', videos=videos, continuation_token=continuation_token, current_page_type=page_type)
+    return render_template('index.html',
+                           videos=videos,
+                           continuation_token=continuation_token,
+                           current_page_type=page_type,
+                           api_load_route='main.api_load_more_home_route') # Added api_load_route
 
 @main_bp.route('/subscriptions')
 def subscriptions_feed_route():
@@ -178,7 +182,8 @@ def subscriptions_feed_route():
                            videos=videos,
                            page_title="My Subscriptions",
                            continuation_token=continuation_token,
-                           current_page_type=page_type)
+                           current_page_type=page_type,
+                           api_load_route='main.api_load_more_subscriptions_route') # Added api_load_route
 
 @main_bp.route('/channel')
 def channel_page_route():
@@ -211,12 +216,13 @@ def channel_page_route():
     return render_template('channel_page.html',
                            videos=videos,
                            page_title=f"{channel_name_from_url}",
-                           channel_url=channel_url, # Pass original channel_url for "Load More" context
+                           channel_url=channel_url,
                            continuation_token=continuation_token,
-                           current_page_type=page_type)
+                           current_page_type=page_type,
+                           api_load_route='main.api_load_more_channel_route') # Added api_load_route
 
 
-@main_bp.route('/load_more_home') # This is a UI route, API routes should be under /api/
+@main_bp.route('/load_more_home')
 def load_more_home_route():
     # This was a placeholder UI route, now we implement the API version
     pass # Will be replaced by the actual API route below
@@ -414,10 +420,23 @@ def search():
     if not query:
         flash("Please enter a search query.", "info")
         return redirect(url_for('main.index'))
-    videos = youtube_api.search_videos_parsed(query) # Search might work even without cookies
+
+    page_type = 'search'
+    # youtube_api.search_videos_parsed returns a dict: {'videos': [], 'continuation_token': None}
+    data = youtube_api.search_videos_parsed(query, limit=30)
+    videos = data.get('videos', [])
+    continuation_token = data.get('continuation_token') # Will be None if not implemented in API
+
     if not videos:
         flash(f"No results found for '{query}'.", "info")
-    return render_template('search_results.html', videos=videos, query=query)
+
+    return render_template('search_results.html',
+                           videos=videos,
+                           query=query,
+                           current_page_type=page_type,
+                           continuation_token=continuation_token, # Pass for future "Load More"
+                           api_load_route='main.api_load_more_search_route' # Define even if not used by template yet
+                           )
 
 def sanitize_filename(name):
     name = re.sub(r'[\\/*?:"<>|]',"", name)
@@ -546,25 +565,31 @@ def _download_video_worker(item_video_id):
     actual_filepath = None
 
     try:
-        ffmpeg_dir_path = os.path.dirname(os.path.abspath(__file__))
         cookie_file_abs_path = os.path.abspath(config.COOKIE_FILE_PATH)
 
-        # Use _operational_cookies_ready to decide if cookies should be passed to yt-dlp
-        # This ensures yt-dlp doesn't try to use a missing/empty operational cookie file.
         use_cookies_for_yt_dlp = _operational_cookies_ready and check_operational_cookie_file_validity(cookie_file_abs_path)
         if use_cookies_for_yt_dlp:
              print(f"WORKER: Using operational cookies for {item_video_id}: {cookie_file_abs_path}")
         else:
              print(f"WORKER: Not using cookies for {item_video_id} (operational_cookies_ready: {_operational_cookies_ready}, file valid: {check_operational_cookie_file_validity(cookie_file_abs_path)})")
 
-
         command = [
-            'yt-dlp',
+            config.YT_DLP_PATH, # Use configured path for yt-dlp
+        ]
+
+        # Add --ffmpeg-location if FFMPEG_PATH is configured to something other than 'ffmpeg' (i.e., not relying on system PATH)
+        # yt-dlp can take either the path to the executable or the directory.
+        if config.FFMPEG_PATH and config.FFMPEG_PATH.lower() != 'ffmpeg':
+            command.extend(['--ffmpeg-location', config.FFMPEG_PATH])
+            print(f"WORKER: Using specific ffmpeg location: {config.FFMPEG_PATH}")
+        else:
+            print(f"WORKER: Assuming ffmpeg is in system PATH or yt-dlp will find it.")
+
+        command.extend([
             *(['--cookies', cookie_file_abs_path] if use_cookies_for_yt_dlp else []),
-            '--ffmpeg-location', ffmpeg_dir_path,
-            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
-            '--merge-output-format', 'mp4',
-            '-o', output_filename_template,
+            '-f', 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best', # Standard format selection
+            '--merge-output-format', 'mp4', # Ensure output is mp4 after merge
+            '-o', output_filename_template, # Output template
             '--no-playlist',
             '--force-overwrites',
             video_url

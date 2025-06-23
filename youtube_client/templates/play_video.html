@@ -67,10 +67,10 @@
     }
 </style>
 
-    {% if recommended_videos %}
+    {% if recommended_videos and recommended_videos.videos %}
     <div class="recommendations-container">
         <h3>Recommended Videos</h3>
-        {% for reco_video in recommended_videos %}
+        {% for reco_video in recommended_videos.videos %}
             <div class="recommendation-item">
                 <a href="{{ url_for('main.process_video_request_route', url=reco_video.youtube_url, title=reco_video.title, thumbnail=reco_video.thumbnail_url) }}"
                    title="Process: {{ reco_video.title }}">
@@ -95,7 +95,7 @@
                     </small></p>
                     {# Add to Queue Button for recommended videos #}
                     <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
-                            hx-vals='{"video_id": "{{ reco_video.video_id }}", "youtube_url": "{{ reco_video.youtube_url }}", "title": "{{ reco_video.title }}", "thumbnail_url": "{{ reco_video.thumbnail_url }}"}'
+                            hx-vals='{"video_id": "{{ reco_video.video_id }}", "youtube_url": "{{ reco_video.youtube_url }}", "title": "{{ reco_video.title | replace('"', "'") }}", "thumbnail_url": "{{ reco_video.thumbnail_url }}"}'
                             hx-swap="none"
                             class="btn-add-queue btn-small">
                         Add to Queue

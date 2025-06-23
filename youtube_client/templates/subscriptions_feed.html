@@ -5,62 +5,74 @@
 {% block content %}
     <h2>{{ page_title | default("Subscriptions Feed") }}</h2>
 
-    {# No search bar needed specifically on this page, it's in base.html if desired globally #}
-
     {% if videos %}
-        <div class="video-grid">
+        <div class="video-grid" id="video-grid-{{ current_page_type }}">
             {% for video in videos %}
-            <div class="video-item">
-                {# Link to process_video_request for queuing/playing #}
-                <a href="{{ url_for('main.process_video_request_route', url=video.youtube_url, title=video.title, thumbnail=video.thumbnail_url) }}"
-                   title="Process: {{ video.title }}">
-                    <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}">
-                    <h3>{{ video.title | truncate(60) }}</h3>
-                </a>
-                <p class="channel-name">
-                    {% if video.channel_url and video.channel_url != '#' and video.channel_url != 'N/A' %}
-                        Channel: <a href="{{ url_for('main.channel_page_route', url=video.channel_url) }}">{{ video.channel_name | default('N/A') }}</a>
-                    {% else %}
-                        Channel: {{ video.channel_name | default('N/A') }}
-                    {% endif %}
-                </p>
-                {# HTMX Add to Queue Button - This structure will be refined when HTMX is fully integrated #}
-                <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
-                        hx-vals='{"video_id": "{{ video.video_id }}", "youtube_url": "{{ video.youtube_url }}", "title": "{{ video.title }}", "thumbnail_url": "{{ video.thumbnail_url }}"}'
-                        hx-swap="none" {# Or target a small status message area, or rely on HX-Trigger for queue #}
-                        class="btn-add-queue">
-                    Add to Queue
-                </button>
-                <p class="video-meta-data"><small>
-                    {% if video.duration_text and video.duration_text != 'N/A' %}{{ video.duration_text }}{% endif %}
-                    {% if video.duration_text and video.duration_text != 'N/A' and video.published_time_text and video.published_time_text != 'N/A' %} - {% endif %}
-                    {% if video.published_time_text and video.published_time_text != 'N/A' %}{{ video.published_time_text }}{% endif %}
-                </small></p>
-                <p class="video-url-display"><small>Original YT: <a href="{{ video.youtube_url }}" target="_blank">{{ video.youtube_url }}</a></small></p>
+            <div class="video-card" id="video-{{ video.video_id }}">
+                <div class="thumbnail-container">
+                    <a href="{{ url_for('main.process_video_request_route', url=video.youtube_url, title=video.title, thumbnail=video.thumbnail_url) }}"
+                       title="Watch/Process: {{ video.title }}">
+                        <img src="{{ video.thumbnail_url if video.thumbnail_url else url_for('static', filename='placeholder.png') }}"
+                             alt="{{ video.title }}" class="thumbnail"
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='placeholder.png') }}';">
+                        {% if video.duration_text and video.duration_text != 'N/A' %}
+                            <span class="duration-badge">{{ video.duration_text }}</span>
+                        {% endif %}
+                    </a>
+                </div>
+                <div class="video-info">
+                    <h4 class="video-title">
+                        <a href="{{ url_for('main.process_video_request_route', url=video.youtube_url, title=video.title, thumbnail=video.thumbnail_url) }}"
+                           title="{{ video.title }}">
+                            {{ video.title | truncate(70) }}
+                        </a>
+                    </h4>
+                    <p class="channel-name">
+                        {% if video.channel_url and video.channel_url != '#' and video.channel_url != 'N/A' and video.channel_name and video.channel_name != 'N/A' %}
+                            <a href="{{ url_for('main.channel_page_route', url=video.channel_url) }}">{{ video.channel_name }}</a>
+                        {% else %}
+                            {{ video.channel_name | default('N/A') }}
+                        {% endif %}
+                    </p>
+                    <p class="video-meta-data-small">
+                        <small>
+                            {% if video.duration_text and video.duration_text != 'N/A' %}{{ video.duration_text }}{% endif %}
+                            {% if video.duration_text and video.duration_text != 'N/A' and video.published_time_text and video.published_time_text != 'N/A' %} &bull; {% endif %}
+                            {% if video.published_time_text and video.published_time_text != 'N/A' %}{{ video.published_time_text }}{% endif %}
+                        </small>
+                    </p>
+                    <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
+                            hx-vals='{"video_id": "{{ video.video_id }}", "youtube_url": "{{ video.youtube_url }}", "title": "{{ video.title | replace('"', "'") }}", "thumbnail_url": "{{ video.thumbnail_url }}"}'
+                            hx-swap="none"
+                            class="btn-add-queue btn-small">
+                        Add to Queue
+                    </button>
+                    <p class="video-url-display"><small>YT: <a href="{{ video.youtube_url }}" target="_blank" rel="noopener noreferrer">Link</a></small></p>
+                </div>
             </div>
             {% endfor %}
         </div>
+
+        <div id="load-more-{{ current_page_type }}-trigger" class="load-more-trigger-container">
+            {% if continuation_token %}
+                <button hx-get="{{ url_for(api_load_route | default('main.api_load_more_subscriptions_route'), token=continuation_token) }}"
+                        hx-target="#video-grid-{{ current_page_type }}"
+                        hx-swap="beforeend"
+                        hx-indicator="#loading-spinner-{{ current_page_type }}"
+                        class="btn-load-more">
+                    Load More ({{ current_page_type }})
+                </button>
+                <div id="loading-spinner-{{ current_page_type }}" class="htmx-indicator">
+                    Loading...
+                </div>
+            {% else %}
+                {# This specific message might be different if it's an empty initial load vs. no *more* videos #}
+                <p>No more subscription videos to load for now.</p>
+            {% endif %}
+        </div>
     {% else %}
-        <p>No videos to display in this feed. (Currently using static placeholder data).</p>
+         <p>No videos to display in this feed. Check your subscriptions on YouTube or try again later.</p>
     {% endif %}
 {% endblock %}
 
-{# Add specific style for btn-add-queue if needed, or use a generic button style #}
-<style>
-    .btn-add-queue {
-        display: inline-block;
-        padding: 6px 12px;
-        margin-top: 8px;
-        font-size: 0.85em;
-        color: #fff;
-        background-color: #007bff; /* Blue */
-        border: none;
-        border-radius: 3px;
-        text-decoration: none;
-        text-align: center;
-        cursor: pointer;
-    }
-    .btn-add-queue:hover {
-        background-color: #0056b3;
-    }
-</style>
+{# Removed redundant style block, assuming styles are in style.css or base.html #}
