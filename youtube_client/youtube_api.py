@@ -120,7 +120,7 @@ def get_nested(data, keys, default=None):
             return default
     return data
 
-def parse_video_data_from_script(html_content, context=None): # Added context
+def parse_video_data_from_script(html_content, context=None, limit=None): # Added limit parameter
     if not html_content:
         return {'videos': [], 'continuation_token': None} # Return dict
 
@@ -313,15 +313,22 @@ def parse_video_data_from_script(html_content, context=None): # Added context
     return {'videos': video_data_list, 'continuation_token': continuation_token}
 
 
-def get_homepage_videos_parsed(limit=30): # Added limit
+def get_homepage_videos_parsed(limit=30):
     """Fetches and parses videos from the YouTube homepage."""
+    print("API: Attempting to fetch and parse homepage videos...")
     cookies = load_cookies()
+    # No specific cookie check here, as homepage might render some content without cookies
+
     html_content = get_youtube_homepage_html(cookies)
     if html_content:
-        return parse_video_data_from_script(html_content)
-    return []
+        # Pass context="home" or None, and the limit
+        parsed_data = parse_video_data_from_script(html_content, context="home", limit=limit)
+        return parsed_data # Expecting {'videos': [...], 'continuation_token': ...}
 
-def search_videos_parsed(query): # Renamed
+    print("API: Failed to get homepage HTML or error during parsing.")
+    return {'videos': [], 'continuation_token': None} # Ensure dict is returned on failure too
+
+def search_videos_parsed(query):
     """Fetches and parses videos from YouTube search results."""
     cookies = load_cookies()
     html_content = search_youtube_html(query, cookies)

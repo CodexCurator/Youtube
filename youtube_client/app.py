@@ -144,21 +144,39 @@ TEMP_VIDEOS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'stat
 @main_bp.route('/')
 def index():
     videos = []
+    continuation_token = None
     if _operational_cookies_ready:
-        videos = youtube_api.get_homepage_videos_parsed()
-        if not videos:
-            flash("Cookies seem loaded, but could not fetch homepage videos. Cookies might be invalid or YouTube structure changed.", "warning")
+        home_data = youtube_api.get_homepage_videos_parsed(limit=30) # Pass limit
+        if home_data and isinstance(home_data, dict):
+            videos = home_data.get('videos', [])
+            continuation_token = home_data.get('continuation_token')
+
+        if not videos: # Check after trying to parse
+            flash("Cookies seem loaded, but could not fetch homepage videos. Cookies might be invalid, YouTube structure changed, or no videos found.", "warning")
     else:
          flash(f"Cookies not loaded. Waiting for cookie file at {USER_COOKIE_DOWNLOAD_PATH}", "warning")
-    return render_template('index.html', videos=videos)
+    return render_template('index.html', videos=videos, continuation_token=continuation_token, current_page_type='home')
 
 @main_bp.route('/subscriptions')
 def subscriptions_feed_route():
-    # Attempting to get dynamic data from youtube_api
-    subscription_videos = youtube_api.get_subscriptions_feed_parsed()
-    if not subscription_videos:
-        flash("Could not load subscriptions feed. This might be due to cookie issues, YouTube changes, or no new videos.", "warning")
-    return render_template('subscriptions_feed.html', videos=subscription_videos, page_title="My Subscriptions")
+    subscription_videos = []
+    continuation_token = None
+    if _operational_cookies_ready:
+        subscriptions_data = youtube_api.get_subscriptions_feed_parsed() # limit is already 30 in API
+        if subscriptions_data and isinstance(subscriptions_data, dict):
+            subscription_videos = subscriptions_data.get('videos', [])
+            continuation_token = subscriptions_data.get('continuation_token')
+
+        if not subscription_videos:
+            flash("Could not load subscriptions feed. This might be due to cookie issues, YouTube changes, or no new videos from subscriptions.", "warning")
+    else:
+        flash(f"Cookies not loaded. Cannot fetch subscriptions. Waiting for cookie file at {USER_COOKIE_DOWNLOAD_PATH}", "warning")
+
+    return render_template('subscriptions_feed.html',
+                           videos=subscription_videos,
+                           page_title="My Subscriptions",
+                           continuation_token=continuation_token,
+                           current_page_type='subscriptions')
 
 
 @main_bp.route('/load_more_home')
