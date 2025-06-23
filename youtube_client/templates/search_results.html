@@ -10,9 +10,10 @@
         <div class="video-grid">
             {% for video in videos %}
             <div class="video-item">
+            <div class="video-item">
                 {# Link now points to our local route that processes the video request (queues/plays) #}
-                <a href="{{ url_for('main.process_video_request_route', url=video.url, title=video.title, thumbnail=video.thumbnail) }}" title="Process: {{ video.title }}">
-                    <img src="{{ video.thumbnail }}" alt="{{ video.title }}">
+                <a href="{{ url_for('main.process_video_request_route', url=video.youtube_url, title=video.title, thumbnail=video.thumbnail_url) }}" title="Process: {{ video.title }}">
+                    <img src="{{ video.thumbnail_url }}" alt="{{ video.title }}">
                     <h3>{{ video.title | truncate(60) }}</h3>
                 </a>
                 <p class="channel-name">
@@ -33,7 +34,6 @@
                         class="btn-add-queue">
                     Add to Queue
                 </button>
-                {# Keep original YouTube link for reference if desired, or remove #}
                 <p class="video-url-display"><small>Original YT: <a href="{{ video.youtube_url }}" target="_blank">{{ video.youtube_url }}</a></small></p>
             </div>
             {% endfor %}
