@@ -1,3 +1,7 @@
+*, *::before, *::after {
+    box-sizing: border-box;
+}
+
 /* Basic styling */
 body {
     font-family: Arial, sans-serif;
@@ -89,71 +93,142 @@ header #branding h1 {
     display: grid;
     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
     gap: 20px;
+    /* padding: 20px; /* Padding on grid can sometimes interact with card margins/padding */
 }
 
-.video-item {
-    background: #fff;
-    padding: 15px;
+/* Standardized .video-card styling */
+.video-card {
+    background-color: #fff;
     border: 1px solid #ddd;
-    border-radius: 4px;
-    text-align: left;
+    border-radius: 8px;
+    overflow: hidden; /* Crucial to contain elements like rounded corners for images */
     display: flex;
     flex-direction: column;
+    transition: box-shadow 0.2s ease-in-out;
+}
+.video-card:hover {
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
 }
 
-.video-item img {
-    max-width: 100%;
-    height: auto;
-    border: 1px solid #ccc;
-    margin-bottom: 10px;
-    aspect-ratio: 16 / 9; /* Maintain aspect ratio */
-    object-fit: cover;
+.thumbnail-container {
+    position: relative;
+    width: 100%;
+    padding-top: 56.25%; /* 16:9 Aspect Ratio */
+    background-color: #e0e0e0; /* Light grey placeholder background */
 }
 
-.video-item h3 {
-    font-size: 1.1em;
+.thumbnail-container img.thumbnail {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover; /* Ensures image covers the area, cropping if necessary */
+}
+
+.duration-badge {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    background-color: rgba(0, 0, 0, 0.75);
+    color: white;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font-size: 0.8em;
+}
+
+.video-info {
+    padding: 12px; /* Padding for text content */
+    display: flex;
+    flex-direction: column;
+    flex-grow: 1; /* Allows this section to grow and push .video-url-display down */
+}
+
+.video-info .video-title {
+    font-size: 1em; /* Adjusted from 1.1em h3 */
+    font-weight: 600; /* Slightly bolder for h4 feel */
     margin-top: 0;
-    margin-bottom: 8px;
+    margin-bottom: 6px;
     color: #111;
     line-height: 1.3;
+    /* For 2 lines of text: line-height * font-size * lines */
+    /* Assuming 1em = 16px, 1.3 * 16px * 2 lines = 41.6px. Use em for scalability. */
     height: 2.6em; /* Approx 2 lines with line-height 1.3 */
-    overflow: hidden;
+    overflow: hidden; /* Hides text that overflows the fixed height */
+    text-overflow: ellipsis; /* Adds ... but often needs width constraint / display:block or -webkit-line-clamp */
+    /* For more robust multi-line ellipsis (webkit only but widely supported): */
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
-.video-item a { /* For the thumbnail and title link */
+.video-info .video-title a {
     text-decoration: none;
     color: inherit;
 }
-.video-item a:hover h3 {
-    color: #c4302b;
+.video-info .video-title a:hover {
+    color: #c4302b; /* YouTube Red */
 }
 
-
-.video-item .channel-name {
-    font-size: 0.9em;
+.video-info .channel-name {
+    font-size: 0.85em;
     color: #555;
-    margin-bottom: 5px;
+    margin-bottom: 4px;
+    line-height: 1.2;
+    height: 1.2em; /* Approx 1 line */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap; /* Ensure it stays on one line for ellipsis */
 }
-.video-item .channel-name a {
+.video-info .channel-name a {
     text-decoration: none;
-    color: #065fd4;
+    color: #065fd4; /* YouTube blue for links */
 }
-.video-item .channel-name a:hover {
+.video-info .channel-name a:hover {
     text-decoration: underline;
 }
 
-.video-item .video-url-display {
+.video-info .video-meta-data-small {
     font-size: 0.8em;
+    color: #666;
+    margin-bottom: 8px; /* Space before button */
+    line-height: 1.2;
+    height: 1.2em; /* Approx 1 line */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.video-info .video-meta-data-small small {
+    font-size: inherit; /* Ensure small tag doesn't double-shrink */
+}
+
+
+.video-info .btn-add-queue { /* Targeting existing class */
+    margin-top: auto; /* Pushes button to bottom if .video-info is flex-grow */
+    align-self: flex-start; /* Prevent button from stretching full width */
+}
+
+
+.video-info .video-url-display { /* This might be redundant if button is pushed to bottom */
+    font-size: 0.75em;
     color: #777;
     word-wrap: break-word;
-    margin-top: auto; /* Pushes this to the bottom if in flex column */
+    margin-top: 8px; /* If not using margin-top: auto on button, this provides space */
 }
-.video-item .video-url-display a {
+.video-info .video-url-display a {
     color: #065fd4;
-    text-decoration: none;
 }
-.video-item .video-url-display a:hover {
+.video-info .video-url-display a:hover {
     text-decoration: underline;
 }
+
+/* Removing old .video-item styles to avoid conflicts if any linger */
+.video-item { /* If any .video-item classes are still in HTML, this is a reset */
+    /* Consider removing .video-item from HTML entirely instead */
+}
+.video-item img {}
+.video-item h3 {}
+.video-item .channel-name {}
+.video-item .video-url-display {}
 
 
 /* Flash Messages */
