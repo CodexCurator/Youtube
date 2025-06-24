@@ -10,6 +10,7 @@
             <thead>
                 <tr>
                     <th>#</th>
+                    <th class="thumbnail-col-header">Thumbnail</th>
                     <th>Title</th>
                     <th>Video ID</th>
                     <th>Status</th>
@@ -20,6 +21,11 @@
                 {% for item in download_queue %}
                 <tr>
                     <td>{{ loop.index }}</td>
+                    <td class="thumbnail-cell">
+                        <img src="{{ item.thumbnail_url if item.thumbnail_url else url_for('static', filename='placeholder.png') }}"
+                             alt="Thumb for {{ item.title | truncate(30) }}" class="queue-item-thumbnail"
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='placeholder.png') }}';">
+                    </td>
                     <td>{{ item.title | truncate(70) }}</td>
                     <td>{{ item.video_id }}</td>
                     <td class="status-{{ item.status | lower }}">

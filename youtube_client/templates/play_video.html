@@ -3,107 +3,88 @@
 {% block title %}Playing: {{ title | default('Video') }}{% endblock %}
 
 {% block content %}
-    <h2>Playing: {{ title | default('Video') }}</h2>
-
-    {% if video_file_url %}
-        <div class="video-player-container">
-            <video id="myPlayer" controls autoplay width="100%">
-                <source src="{{ video_file_url }}" type="video/mp4">
-                Your browser does not support the video tag. You can download the video directly
-                <a href="{{ video_file_url }}">here</a>.
-            </video>
-        </div>
-        <p style="margin-top: 15px;">
-            <a href="{{ url_for('main.index') }}">Back to Home</a>
-        </p>
-        <p>
-            <small>Serving video from: {{ video_file_url }}</small>
-        </p>
-    {% else %}
-        <p>Could not load video. The file might be missing or there was an error during download.</p>
-        <p><a href="{{ url_for('main.index') }}">Back to Home</a></p>
-    {% endif %}
-
-<style>
-    .video-player-container {
-        max-width: 800px; /* Or your preferred max width */
-        margin: 20px auto; /* Center it */
-        background-color: #000; /* Black background for the player */
-    }
-    #myPlayer {
-        display: block; /* Remove extra space below video element */
-        max-height: 70vh; /* Limit height to 70% of viewport height */
-    }
-    .recommendations-container {
-        margin-top: 20px;
-        padding-top: 15px;
-        border-top: 1px solid #eee;
-    }
-    .recommendations-container h3 {
-        margin-top: 0;
-        font-size: 1.2em;
-    }
-    .recommendation-item {
-        display: flex;
-        margin-bottom: 10px;
-        font-size: 0.9em;
-    }
-    .recommendation-item img {
-        width: 120px; /* Fixed width for recommended thumbs */
-        height: 68px; /* 16:9 aspect ratio */
-        object-fit: cover;
-        margin-right: 10px;
-        border: 1px solid #ccc;
-    }
-    .recommendation-item-info h4 {
-        margin: 0 0 5px 0;
-        font-size: 1em;
-        line-height: 1.2;
-    }
-    .recommendation-item-info p {
-        margin: 0;
-        font-size: 0.85em;
-        color: #555;
-    }
-</style>
-
-    {% if recommended_videos and recommended_videos.videos %}
-    <div class="recommendations-container">
-        <h3>Recommended Videos</h3>
-        {% for reco_video in recommended_videos.videos %}
-            <div class="recommendation-item">
-                <a href="{{ url_for('main.process_video_request_route', url=reco_video.youtube_url, title=reco_video.title, thumbnail=reco_video.thumbnail_url) }}"
-                   title="Process: {{ reco_video.title }}">
-                    <img src="{{ reco_video.thumbnail_url }}" alt="{{ reco_video.title }}">
-                </a>
-                <div class="recommendation-item-info">
-                    <a href="{{ url_for('main.process_video_request_route', url=reco_video.youtube_url, title=reco_video.title, thumbnail=reco_video.thumbnail_url) }}"
-                       title="Process: {{ reco_video.title }}">
-                        <h4>{{ reco_video.title | truncate(50) }}</h4>
-                    </a>
-                    <p class="channel-name">
-                        {% if reco_video.channel_url and reco_video.channel_url != '#' and reco_video.channel_url != 'N/A' %}
-                            <a href="{{ url_for('main.channel_page_route', url=reco_video.channel_url) }}">{{ reco_video.channel_name | default('N/A') }}</a>
-                        {% else %}
-                            {{ reco_video.channel_name | default('N/A') }}
-                        {% endif %}
-                    </p>
-                    <p class="video-meta-data-small"><small>
-                        {% if reco_video.duration_text and reco_video.duration_text != 'N/A' %}{{ reco_video.duration_text }}{% endif %}
-                        {% if reco_video.duration_text and reco_video.duration_text != 'N/A' and reco_video.published_time_text and reco_video.published_time_text != 'N/A' %} - {% endif %}
-                        {% if reco_video.published_time_text and reco_video.published_time_text != 'N/A' %}{{ reco_video.published_time_text }}{% endif %}
-                    </small></p>
-                    {# Add to Queue Button for recommended videos #}
-                    <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
-                            hx-vals='{"video_id": "{{ reco_video.video_id }}", "youtube_url": "{{ reco_video.youtube_url }}", "title": "{{ reco_video.title | replace('"', "'") }}", "thumbnail_url": "{{ reco_video.thumbnail_url }}"}'
-                            hx-swap="none"
-                            class="btn-add-queue btn-small">
-                        Add to Queue
-                    </button>
-                </div>
-            </div>
-        {% endfor %}
+    {# Removed inline style block - moved to style.css or covered by existing styles #}
+    <div class="player-page-title-bar">
+        <h2>Playing: {{ title | default('Video') }}</h2>
+        <p><a href="{{ url_for('main.index') }}" class="btn-link-styled">Back to Home</a></p>
     </div>
-    {% endif %}
 
+    <div class="player-and-recommendations-wrapper">
+        <div class="video-player-main-area">
+            {% if video_file_url %}
+                <div class="video-player-container">
+                    <video id="myPlayer" controls autoplay width="100%">
+                        <source src="{{ video_file_url }}" type="video/mp4">
+                        Your browser does not support the video tag. You can download the video directly
+                        <a href="{{ video_file_url }}">here</a>.
+                    </video>
+                </div>
+                <p class="video-source-info">
+                    <small>Serving video from: {{ video_file_url }}</small>
+                </p>
+            {% else %}
+                <p class="error-message">Could not load video. The file might be missing or there was an error during download.</p>
+            {% endif %}
+        </div>
+
+        {% if recommended_videos and recommended_videos.videos %}
+        <aside class="recommendations-sidebar">
+            <h3>Recommended Videos</h3>
+            <div class="recommendations-list"> {# Added a wrapper for items if needed for scrolling/styling #}
+                {% for reco_video in recommended_videos.videos %}
+                <div class="recommendation-item">
+                    <a href="{{ url_for('main.process_video_request_route', url=reco_video.youtube_url, title=reco_video.title, thumbnail=reco_video.thumbnail_url) }}"
+                       title="Process: {{ reco_video.title }}" class="reco-thumbnail-link">
+                        <img src="{{ reco_video.thumbnail_url if reco_video.thumbnail_url else url_for('static', filename='placeholder.png') }}"
+                             alt="{{ reco_video.title }}" class="reco-thumbnail"
+                             onerror="this.onerror=null; this.src='{{ url_for('static', filename='placeholder.png') }}';">
+                    </a>
+                    <div class="recommendation-item-info">
+                        <a href="{{ url_for('main.process_video_request_route', url=reco_video.youtube_url, title=reco_video.title, thumbnail=reco_video.thumbnail_url) }}"
+                           title="{{ reco_video.title }}" class="reco-title-link">
+                            <h4>{{ reco_video.title | truncate(50) }}</h4>
+                        </a>
+                        <p class="channel-name">
+                            {% if reco_video.channel_url and reco_video.channel_url != '#' and reco_video.channel_url != 'N/A' and reco_video.channel_name and reco_video.channel_name != 'N/A' %}
+                                <a href="{{ url_for('main.channel_page_route', url=reco_video.channel_url) }}">{{ reco_video.channel_name }}</a>
+                            {% else %}
+                                {{ reco_video.channel_name | default('N/A') }}
+                            {% endif %}
+                        </p>
+                        <p class="video-meta-data-small"><small>
+                            {% if reco_video.duration_text and reco_video.duration_text != 'N/A' %}{{ reco_video.duration_text }}{% endif %}
+                            {% if reco_video.duration_text and reco_video.duration_text != 'N/A' and reco_video.published_time_text and reco_video.published_time_text != 'N/A' %} &bull; {% endif %}
+                            {% if reco_video.published_time_text and reco_video.published_time_text != 'N/A' %}{{ reco_video.published_time_text }}{% endif %}
+                        </small></p>
+                        <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
+                                hx-vals='{"video_id": "{{ reco_video.video_id }}", "youtube_url": "{{ reco_video.youtube_url }}", "title": "{{ reco_video.title | replace('"', "'") }}", "thumbnail_url": "{{ reco_video.thumbnail_url }}"}'
+                                hx-swap="none"
+                                class="btn-add-queue btn-small">
+                            Add to Queue
+                        </button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div> {# End recommendations-list #}
+
+            {% if recommended_videos.continuation_token %}
+            <div id="load-more-recommendations-trigger" class="load-more-trigger-container recommendations-load-more">
+                <button hx-get="{{ url_for('main.api_load_more_recommendations_route', token=recommended_videos.continuation_token, video_id=current_video_id) }}"
+                        hx-target=".recommendations-list" {# Append new items into the list #}
+                        hx-swap="beforeend"
+                        hx-indicator="#loading-spinner-recommendations"
+                        class="btn-load-more">
+                    Load More Recommendations
+                </button>
+                <div id="loading-spinner-recommendations" class="htmx-indicator">Loading...</div>
+            </div>
+            {% endif %}
+        </aside>
+        {% elif not recommended_videos or not recommended_videos.videos %}
+         <aside class="recommendations-sidebar">
+            <h3>Recommended Videos</h3>
+            <p>No recommendations available at the moment.</p>
+        </aside>
+        {% endif %}
+    </div> {# End player-and-recommendations-wrapper #}
 {% endblock %}

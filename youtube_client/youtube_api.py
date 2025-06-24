@@ -579,20 +579,59 @@ def get_recommended_videos_for_player(current_video_id=None, limit=15):
                     cont_renderer = get_nested(item_content, ['continuationItemRenderer'])
                     if cont_renderer:
                         token = get_nested(cont_renderer, ['continuationEndpoint', 'continuationCommand', 'token'])
-                        if token: next_continuation_token = token; print(f"API_RECO: Found continuation token: {token[:20]}...")
+                        if token: next_continuation_token = token; print(f"API_RECO: Found continuation token from item: {str(token)[:20]}...")
                         continue
 
-                    renderer = get_nested(item_content, ['compactVideoRenderer']) # Recommendations often use this
-                    if not renderer: renderer = get_nested(item_content, ['videoRenderer']) # Fallback
+                    # Try various common renderer paths for recommendations
+                    # compactVideoRenderer is very common for recommendations.
+                    # Sometimes it might be nested under other renderers (e.g. shelfRenderer, itemSectionRenderer content)
+                    # However, 'results' usually gives a flat list of these directly.
+
+                    possible_renderers = [
+                        get_nested(item_content, ['compactVideoRenderer']),
+                        get_nested(item_content, ['videoRenderer']), # Less common directly in reco list, but possible
+                        # Could add more specific ones if found during debugging, e.g., from a playlist or mix
+                        get_nested(item_content, ['pivotVideoRenderer']), # Older, but for completeness
+                        get_nested(item_content, ['richItemRenderer', 'content', 'compactVideoRenderer']), # If wrapped
+                        get_nested(item_content, ['richItemRenderer', 'content', 'videoRenderer'])
+                    ]
+                    renderer = next((r for r in possible_renderers if r), None)
+
+                    if not renderer and isinstance(item_content, dict) : # Log if no renderer found in an item
+                         print(f"API_RECO_DEBUG: No direct renderer found in item. Keys: {list(item_content.keys())}")
+                         # Check for common wrappers if direct access failed
+                         if get_nested(item_content, ['videoLockupRenderer', 'videoLockupViewModel', 'videoViewModel', 'videoRenderer']): # A very specific observed path
+                            renderer = get_nested(item_content, ['videoLockupRenderer', 'videoLockupViewModel', 'videoViewModel', 'videoRenderer'])
+                            if renderer: print("API_RECO_DEBUG: Found renderer via videoLockupRenderer path.")
+
 
                     if renderer:
                         video_dict = _parse_video_renderer_item(renderer)
-                        if video_dict and video_dict.get('video_id') != current_video_id:
-                            video_data_list.append(video_dict)
-                            item_count +=1
+                        if video_dict:
+                            if video_dict.get('video_id') != current_video_id:
+                                video_data_list.append(video_dict)
+                                item_count += 1
+                                # print(f"API_RECO_DEBUG: Added reco: {video_dict.get('title')}") # Verbose
+                            # else: # Debugging for why a video might be skipped
+                                # print(f"API_RECO_DEBUG: Skipped reco (matches current video): {video_dict.get('title')}")
+                        # else: # Debugging for why parsing failed for a renderer
+                            # print(f"API_RECO_DEBUG: _parse_video_renderer_item failed for renderer: {str(renderer)[:100]}")
+                    # else: # Debugging for items that don't yield any renderer
+                        # if not cont_renderer: # Avoid logging continuation items as "no renderer"
+                            # print(f"API_RECO_DEBUG: No renderer extracted from item_content: {str(item_content)[:200]}")
 
-                print(f"API_RECO: Parsed {len(video_data_list)} recommended videos.")
+                print(f"API_RECO: Parsed {len(video_data_list)} recommended videos. Next token: {str(next_continuation_token)[:20] if next_continuation_token else 'None'}")
                 return {'videos': video_data_list[:limit], 'continuation_token': next_continuation_token}
+            else: # raw_reco_items was None or not a list
+                if yt_initial_data: # Log structure if results path failed
+                    secondary_results_node = get_nested(yt_initial_data, ['contents', 'twoColumnWatchNextResults', 'secondaryResults', 'secondaryResults'])
+                    if secondary_results_node:
+                        print(f"API_RECO_DEBUG: secondaryResults.secondaryResults node found. Keys: {list(secondary_results_node.keys())}")
+                    else:
+                        watch_next_node = get_nested(yt_initial_data, ['contents', 'twoColumnWatchNextResults'])
+                        if watch_next_node:
+                             print(f"API_RECO_DEBUG: twoColumnWatchNextResults node found. Keys: {list(watch_next_node.keys())}")
+
 
     print(f"API: Failed to get or parse recommendations for {current_video_id}. Returning static fallback.")
     static_reco_videos = [

@@ -377,7 +377,7 @@ footer {
 
 
 /* Sidebar Queue Specifics (can be moved to a _queue_sidebar.css if it grows) */
-#queue-sidebar-content ul {
+#queue-sidebar-content ul, .recommendations-list ul { /* Apply to reco list if it uses ul */
     list-style: none;
     padding: 0;
     margin: 0;
@@ -413,3 +413,228 @@ footer {
 #queue-sidebar-content .status-pending,
 #queue-sidebar-content .status-queued { background-color: #fff3cd; color: #856404; }
 #queue-sidebar-content .status-failed { background-color: #f8d7da; color: #721c24; }
+
+/* Queue Table Specifics (from queue.html, if not already global) */
+.queue-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 20px;
+    table-layout: fixed; /* Helps with column width consistency */
+}
+.queue-table th, .queue-table td {
+    border: 1px solid #ddd;
+    padding: 8px 10px; /* Slightly reduced padding for more content */
+    text-align: left;
+    vertical-align: middle;
+    word-wrap: break-word; /* Allow long text to wrap */
+}
+.queue-table th {
+    background-color: #f2f2f2;
+    font-weight: bold;
+}
+.queue-table tr:nth-child(even) {
+    background-color: #f9f9f9;
+}
+
+/* Column width adjustments for queue table */
+.queue-table th:nth-child(1), .queue-table td:nth-child(1) { width: 5%; } /* # column */
+.queue-table .thumbnail-col-header, .queue-table .thumbnail-cell { width: 120px; } /* Thumbnail column, fixed width */
+.queue-table th:nth-child(3), .queue-table td:nth-child(3) { width: auto; }  /* Title - takes remaining flexible space */
+.queue-table th:nth-child(4), .queue-table td:nth-child(4) { width: 15%; } /* Video ID */
+.queue-table th:nth-child(5), .queue-table td:nth-child(5) { width: 12%; } /* Status */
+.queue-table th:nth-child(6), .queue-table td:nth-child(6) { width: 20%; } /* Details/Action */
+
+
+.queue-table .thumbnail-cell {
+    padding: 5px; /* Smaller padding for thumbnail cell */
+}
+.queue-item-thumbnail {
+    width: 100px; /* Max width for thumbnail */
+    height: 56px; /* 16:9 aspect ratio for 100px width */
+    object-fit: cover;
+    border-radius: 3px;
+    border: 1px solid #eee;
+    display: block; /* Remove extra space below image */
+    margin: auto; /* Center if cell is wider */
+}
+
+.status-completed { color: green; }
+.status-downloading { color: blue; }
+.status-pending, .status-queued { color: orange; } /* Combined pending and queued */
+.status-failed { color: red; }
+.status-watched { color: purple; } /* For new 'watched' status */
+
+.error-message { font-size: 0.9em; color: #721c24; }
+
+.btn-play, .btn-retry {
+    display: inline-block;
+    padding: 5px 10px;
+    font-size: 0.9em;
+    color: #fff;
+    text-decoration: none;
+    border-radius: 3px;
+    text-align: center;
+    margin-right: 5px; /* Spacing between buttons */
+}
+.btn-play:last-child, .btn-retry:last-child { margin-right: 0; }
+
+.btn-play { background-color: #28a745; } /* Green */
+.btn-play:hover { background-color: #218838; }
+.btn-retry { background-color: #007bff; } /* Blue */
+.btn-retry:hover { background-color: #0056b3; }
+
+/* Player Page Specifics */
+.player-page-title-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 15px;
+}
+.player-page-title-bar h2 {
+    margin: 0;
+}
+.btn-link-styled { /* For "Back to Home" on player page */
+    display: inline-block;
+    padding: 8px 15px;
+    text-decoration: none;
+    background-color: #6c757d; /* Grey */
+    color: white;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+.btn-link-styled:hover {
+    background-color: #5a6268;
+}
+
+.player-and-recommendations-wrapper {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+}
+
+.video-player-main-area {
+    flex-grow: 1;
+    flex-basis: 65%;
+    min-width: 300px;
+}
+.video-player-container {
+    max-width: 100%; /* Make it responsive within its container */
+    /* margin: 20px auto; /* Centering if it's narrower than main-area */
+    background-color: #000;
+}
+#myPlayer {
+    display: block;
+    width: 100%; /* Ensure video player takes full width of its container */
+    max-height: 75vh; /* Adjust max height as needed */
+}
+.video-source-info {
+    margin-top: 8px;
+    font-size: 0.85em;
+    color: #555;
+}
+.error-message { /* General error message styling */
+    color: #721c24;
+    background-color: #f8d7da;
+    border: 1px solid #f5c6cb;
+    padding: 10px;
+    border-radius: 4px;
+}
+
+
+.recommendations-sidebar {
+    flex-grow: 1;
+    flex-basis: 30%;
+    min-width: 250px; /* Slightly smaller min-width for recos */
+    max-height: 75vh;
+    overflow-y: auto;
+    padding: 10px;
+    background-color: #f9f9f9;
+    border-radius: 4px;
+    border: 1px solid #eee;
+}
+.recommendations-sidebar h3 {
+    margin-top: 0;
+    font-size: 1.2em;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 12px;
+}
+.recommendations-list { /* Wrapper for recommendation items */
+    /* No specific styles needed unless for spacing inside sidebar */
+}
+.recommendation-item {
+    display: flex;
+    margin-bottom: 12px;
+    font-size: 0.9em;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #eee;
+}
+.recommendation-item:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+.reco-thumbnail-link img.reco-thumbnail { /* Specific class for reco thumbs if needed */
+    width: 120px;
+    height: 68px;
+    object-fit: cover;
+    margin-right: 10px;
+    border: 1px solid #ccc;
+    border-radius: 3px;
+}
+.recommendation-item-info {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+.recommendation-item-info h4 {
+    margin: 0 0 4px 0;
+    font-size: 0.95em; /* Slightly smaller for reco list */
+    line-height: 1.25;
+    max-height: 2.5em; /* Approx 2 lines */
+    overflow: hidden;
+    text-overflow: ellipsis;
+    display: -webkit-box; /* For multi-line ellipsis */
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+}
+.recommendation-item-info .reco-title-link {
+    text-decoration: none;
+    color: #111;
+}
+.recommendation-item-info .reco-title-link:hover h4 {
+    color: #c4302b;
+}
+
+.recommendation-item-info .channel-name { /* Reusing .channel-name from video-card */
+    font-size: 0.8em;
+    margin-bottom: 3px;
+}
+.recommendation-item-info .video-meta-data-small { /* Reusing */
+    font-size: 0.75em;
+    margin-bottom: 5px;
+}
+.recommendation-item-info .btn-add-queue.btn-small {
+    margin-top: auto; /* Push to bottom */
+    align-self: flex-start;
+}
+
+.recommendations-load-more { /* Container for the load more button in recommendations */
+    margin-top: 15px;
+    text-align: center;
+}
+
+
+@media (max-width: 900px) {
+    .player-and-recommendations-wrapper {
+        flex-direction: column;
+    }
+    .video-player-main-area,
+    .recommendations-sidebar {
+        flex-basis: 100%;
+    }
+    .recommendations-sidebar {
+        max-height: none;
+        margin-top: 20px;
+    }
+}

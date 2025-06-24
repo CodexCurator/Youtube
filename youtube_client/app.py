@@ -517,6 +517,13 @@ def player_route(video_id):
         video_file_for_static_url = os.path.basename(video_item_db['filepath'])
         video_static_path_constructed = f"{TEMP_VIDEOS_STATIC_PATH}/{video_file_for_static_url}"
 
+        # Mark video as 'watched' if it was 'completed'
+        if video_item_db['status'] == 'completed':
+            database.update_video_status(video_id, 'watched', filepath=video_item_db['filepath'])
+            print(f"PLAYER_ROUTE: Marked video {video_id} as 'watched'.")
+            # Optionally, trigger a queue update if the queue display differentiates 'watched' items significantly
+            # For now, simple status update.
+
         recommended_videos = youtube_api.get_recommended_videos_for_player(current_video_id=video_id)
 
         # If this route is targeted by HTMX for the main content area:
