@@ -60,8 +60,11 @@
 
         {# Standardized "Load More" button container structure #}
         <div id="load-more-{{ current_page_type }}-trigger" class="load-more-trigger-container">
-            {% if continuation_token %}
-                <button hx-get="{{ url_for(api_load_route | default('main.api_load_more_home_route'), token=continuation_token, channel_url=channel_url if channel_url else None, video_id=video_id if video_id else None) }}"
+            {% if continuation_token and innertube_api_key and client_config %}
+                <button hx-get="{{ url_for(api_load_route | default('main.api_load_more_home_route'),
+                                           token=continuation_token,
+                                           innertube_api_key=innertube_api_key,
+                                           client_config_json=(client_config|tojson if client_config else '')) }}"
                         hx-target="#video-grid-{{ current_page_type }}"
                         hx-swap="beforeend"
                         hx-indicator="#loading-spinner-{{ current_page_type }}"
@@ -71,8 +74,10 @@
                 <div id="loading-spinner-{{ current_page_type }}" class="htmx-indicator">
                     Loading...
                 </div>
+            {% elif continuation_token %}
+                 <p>Cannot load more: Missing page context (API key or client config). Token: {{ continuation_token[:20] }}...</p>
             {% else %}
-                <p>No more videos to load.</p>
+                <p>No more videos to load.</p> <!-- This shows if no videos OR no token from start -->
             {% endif %}
         </div>
     {% elif query %}

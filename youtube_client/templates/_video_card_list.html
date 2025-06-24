@@ -28,27 +28,34 @@
         </p>
         <p class="video-meta-data-small">
             <small>
-                {# View count could go here if parsed #}
-                {% if video.published_time_text and video.published_time_text != 'N/A' %}
-                    {{ video.published_time_text }}
-                {% endif %}
+                {% if video.duration_text and video.duration_text != 'N/A' %}{{ video.duration_text }}{% endif %}
+                {% if video.duration_text and video.duration_text != 'N/A' and video.published_time_text and video.published_time_text != 'N/A' %} &bull; {% endif %}
+                {% if video.published_time_text and video.published_time_text != 'N/A' %}{{ video.published_time_text }}{% endif %}
             </small>
         </p>
         <button hx-post="{{ url_for('main.add_to_queue_api_route') }}"
                 hx-vals='{"video_id": "{{ video.video_id }}", "youtube_url": "{{ video.youtube_url }}", "title": "{{ video.title | replace('"', "'") }}", "thumbnail_url": "{{ video.thumbnail_url }}"}'
-                hx-swap="none" {# Or target a notification area #}
+                hx-swap="none"
                 class="btn-add-queue btn-small">
             Add to Queue
         </button>
+        <p class="video-url-display"><small>YT: <a href="{{ video.youtube_url }}" target="_blank" rel="noopener noreferrer">Link</a></small></p>
     </div>
 </div>
 {% endfor %}
 
 {# This part appends the new "Load More" button if there's a next token #}
 {# It uses an OOB (Out-Of-Band) swap to replace the existing button #}
-{% if continuation_token %}
-<div id="load-more-{{ current_page_type }}-trigger" hx-swap-oob="true">
-    <button hx-get="{{ url_for(api_load_route, token=continuation_token, channel_url=channel_url if channel_url else None, video_id=video_id if video_id else None) }}"
+{% if continuation_token and innertube_api_key and client_config %}
+<div id="load-more-{{ current_page_type }}-trigger" hx-swap-oob="true"> {# This div itself is the OOB target content #}
+    <button hx-get="{{ url_for(api_load_route,
+                                token=continuation_token,
+                                innertube_api_key=innertube_api_key,
+                                client_config_json=(client_config|tojson if client_config else ''),
+                                channel_url=channel_url if channel_url else None,
+                                video_id=video_id if video_id else None, {# For recommendations 'load more' #}
+                                query=query if query else None) {# For search 'load more', if implemented #}
+                        }}"
             hx-target="#video-grid-{{ current_page_type }}"
             hx-swap="beforeend"
             hx-indicator="#loading-spinner-{{ current_page_type }}"
@@ -58,6 +65,10 @@
     <div id="loading-spinner-{{ current_page_type }}" class="htmx-indicator">
         Loading...
     </div>
+</div>
+{% elif continuation_token %}
+<div id="load-more-{{ current_page_type }}-trigger" hx-swap-oob="true">
+    <p>Cannot load more: Missing page context (API key or client config). Token: {{ continuation_token[:20] }}...</p>
 </div>
 {% else %}
 {# If no more continuation token, remove the button or show "No more videos" #}

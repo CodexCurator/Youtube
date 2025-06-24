@@ -148,33 +148,50 @@ def index():
     page_type = 'home' # For "Load More" button context in template
     if _operational_cookies_ready:
         data = youtube_api.get_homepage_videos_parsed(limit=30)
-        if data and isinstance(data, dict):
-            videos = data.get('videos', [])
-            continuation_token = data.get('continuation_token')
+        videos = data.get('videos', [])
+        continuation_token = data.get('continuation_token')
+        innertube_api_key = data.get('innertube_api_key')
+        client_config = data.get('client_config')
 
-        if not videos:
-            flash("Cookies seem loaded, but could not fetch homepage videos. Possible YouTube structure change or no videos found.", "warning")
+        if not videos and continuation_token is None: # Check if data fetching truly failed vs just no videos
+             if not innertube_api_key or not client_config:
+                flash("Could not fully parse page context for Home. Load More may fail.", "warning")
+             else:
+                flash("Cookies seem loaded, but could not fetch homepage videos. Possible YouTube structure change or no videos found.", "warning")
     else:
-         flash(f"Cookies not loaded. Waiting for cookie file at {USER_COOKIE_DOWNLOAD_PATH}", "warning")
+        flash(f"Cookies not loaded. Waiting for cookie file at {USER_COOKIE_DOWNLOAD_PATH}", "warning")
+        # Provide empty defaults if cookies not ready so template doesn't error
+        innertube_api_key = None
+        client_config = None
+
     return render_template('index.html',
                            videos=videos,
                            continuation_token=continuation_token,
                            current_page_type=page_type,
-                           api_load_route='main.api_load_more_home_route') # Added api_load_route
+                           api_load_route='main.api_load_more_home_route',
+                           innertube_api_key=innertube_api_key,
+                           client_config=client_config)
 
 @main_bp.route('/subscriptions')
 def subscriptions_feed_route():
     videos = []
     continuation_token = None
+    innertube_api_key = None
+    client_config = None
     page_type = 'subscriptions'
-    if _operational_cookies_ready:
-        data = youtube_api.get_subscriptions_feed_parsed() # API has internal limit
-        if data and isinstance(data, dict):
-            videos = data.get('videos', [])
-            continuation_token = data.get('continuation_token')
 
-        if not videos:
-            flash("Could not load subscriptions feed. Possible cookie issue, YouTube change, or no new subscription videos.", "warning")
+    if _operational_cookies_ready:
+        data = youtube_api.get_subscriptions_feed_parsed()
+        videos = data.get('videos', [])
+        continuation_token = data.get('continuation_token')
+        innertube_api_key = data.get('innertube_api_key')
+        client_config = data.get('client_config')
+
+        if not videos and continuation_token is None:
+            if not innertube_api_key or not client_config:
+                flash("Could not fully parse page context for Subscriptions. Load More may fail.", "warning")
+            else:
+                flash("Could not load subscriptions feed. Possible cookie issue, YouTube change, or no new subscription videos.", "warning")
     else:
         flash(f"Cookies not loaded. Cannot fetch subscriptions. Waiting for cookie file at {USER_COOKIE_DOWNLOAD_PATH}", "warning")
 
@@ -183,43 +200,53 @@ def subscriptions_feed_route():
                            page_title="My Subscriptions",
                            continuation_token=continuation_token,
                            current_page_type=page_type,
-                           api_load_route='main.api_load_more_subscriptions_route') # Added api_load_route
+                           api_load_route='main.api_load_more_subscriptions_route',
+                           innertube_api_key=innertube_api_key,
+                           client_config=client_config)
 
 @main_bp.route('/channel')
 def channel_page_route():
-    channel_url = request.args.get('url')
+    channel_url_param = request.args.get('url') # Renamed to avoid conflict with template var
     videos = []
     continuation_token = None
-    page_type = 'channel' # For "Load More"
+    innertube_api_key = None
+    client_config = None
+    page_type = 'channel'
 
     # Simple heuristic for page title from URL, can be refined
     channel_name_from_url = "Channel"
-    if channel_url:
+    if channel_url_param: # Use the new var name
         try:
-            if "/@" in channel_url: channel_name_from_url = channel_url.split("/@")[1].split("/")[0]
-            elif "/channel/": channel_name_from_url = channel_url.split("/channel/")[1].split("/")[0]
-            elif "/user/": channel_name_from_url = channel_url.split("/user/")[1].split("/")[0]
+            if "/@" in channel_url_param: channel_name_from_url = channel_url_param.split("/@")[1].split("/")[0]
+            elif "/channel/": channel_name_from_url = channel_url_param.split("/channel/")[1].split("/")[0]
+            elif "/user/": channel_name_from_url = channel_url_param.split("/user/")[1].split("/")[0]
         except IndexError: pass
 
-    if not channel_url:
+    if not channel_url_param:
         flash("No channel URL provided.", "error")
         return redirect(url_for('main.index'))
 
-    data = youtube_api.get_channel_videos_parsed(channel_url, limit=30)
-    if data and isinstance(data, dict):
-        videos = data.get('videos', [])
-        continuation_token = data.get('continuation_token')
+    data = youtube_api.get_channel_videos_parsed(channel_url_param, limit=30)
+    videos = data.get('videos', [])
+    continuation_token = data.get('continuation_token')
+    innertube_api_key = data.get('innertube_api_key')
+    client_config = data.get('client_config')
 
-    if not videos:
-        flash(f"Could not load videos for channel: {channel_name_from_url}. Channel may be invalid or parsing failed.", "warning")
+    if not videos and continuation_token is None:
+        if not innertube_api_key or not client_config:
+            flash(f"Could not fully parse page context for channel {channel_name_from_url}. Load More may fail.", "warning")
+        else:
+            flash(f"Could not load videos for channel: {channel_name_from_url}. Channel may be invalid or parsing failed.", "warning")
 
     return render_template('channel_page.html',
                            videos=videos,
                            page_title=f"{channel_name_from_url}",
-                           channel_url=channel_url,
+                           channel_url=channel_url_param, # Pass original param for "Load More" context
                            continuation_token=continuation_token,
                            current_page_type=page_type,
-                           api_load_route='main.api_load_more_channel_route') # Added api_load_route
+                           api_load_route='main.api_load_more_channel_route',
+                           innertube_api_key=innertube_api_key,
+                           client_config=client_config)
 
 
 @main_bp.route('/load_more_home')
@@ -422,20 +449,27 @@ def search():
         return redirect(url_for('main.index'))
 
     page_type = 'search'
-    # youtube_api.search_videos_parsed returns a dict: {'videos': [], 'continuation_token': None}
+    # youtube_api.search_videos_parsed returns a dict: {'videos': [], 'continuation_token': ..., 'innertube_api_key': ..., 'client_config': ...}
     data = youtube_api.search_videos_parsed(query, limit=30)
     videos = data.get('videos', [])
-    continuation_token = data.get('continuation_token') # Will be None if not implemented in API
+    continuation_token = data.get('continuation_token')
+    innertube_api_key = data.get('innertube_api_key')
+    client_config = data.get('client_config')
 
-    if not videos:
-        flash(f"No results found for '{query}'.", "info")
+    if not videos and continuation_token is None:
+        if not innertube_api_key or not client_config:
+             flash(f"Could not fully parse page context for search '{query}'. Load More may fail.", "warning")
+        else:
+            flash(f"No results found for '{query}'.", "info")
 
     return render_template('search_results.html',
                            videos=videos,
                            query=query,
                            current_page_type=page_type,
-                           continuation_token=continuation_token, # Pass for future "Load More"
-                           api_load_route='main.api_load_more_search_route' # Define even if not used by template yet
+                           continuation_token=continuation_token,
+                           api_load_route='main.api_load_more_search_route',
+                           innertube_api_key=innertube_api_key,
+                           client_config=client_config
                            )
 
 def sanitize_filename(name):
@@ -534,7 +568,11 @@ def player_route(video_id):
                                video_file_url=url_for('static', filename=video_static_path_constructed),
                                title=video_item_db['title'],
                                current_video_id=video_id,
-                               recommended_videos=recommended_videos)
+                               recommended_videos=recommended_videos, # This is already the rich dict
+                               # Pass client_config and innertube_api_key from recommended_videos dict
+                               # for the "Load More Recommendations" button
+                               innertube_api_key=recommended_videos.get('innertube_api_key'),
+                               client_config=recommended_videos.get('client_config'))
     else:
         flash(f"Cannot play video {video_id}. File not found or not in database correctly.", "error")
         if video_item_db:

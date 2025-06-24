@@ -67,9 +67,13 @@
                 {% endfor %}
             </div> {# End recommendations-list #}
 
-            {% if recommended_videos.continuation_token %}
+            {% if recommended_videos.continuation_token and innertube_api_key and client_config %}
             <div id="load-more-recommendations-trigger" class="load-more-trigger-container recommendations-load-more">
-                <button hx-get="{{ url_for('main.api_load_more_recommendations_route', token=recommended_videos.continuation_token, video_id=current_video_id) }}"
+                <button hx-get="{{ url_for('main.api_load_more_recommendations_route',
+                                           token=recommended_videos.continuation_token,
+                                           video_id=current_video_id,
+                                           innertube_api_key=innertube_api_key,
+                                           client_config_json=(client_config|tojson if client_config else '')) }}"
                         hx-target=".recommendations-list" {# Append new items into the list #}
                         hx-swap="beforeend"
                         hx-indicator="#loading-spinner-recommendations"
@@ -78,10 +82,14 @@
                 </button>
                 <div id="loading-spinner-recommendations" class="htmx-indicator">Loading...</div>
             </div>
+            {% elif recommended_videos.continuation_token %}
+            <div id="load-more-recommendations-trigger" class="load-more-trigger-container recommendations-load-more">
+                <p>Cannot load more recommendations: Missing page context (API key or client config). Token: {{ recommended_videos.continuation_token[:20] }}...</p>
+            </div>
             {% endif %}
         </aside>
         {% elif not recommended_videos or not recommended_videos.videos %}
-         <aside class="recommendations-sidebar">
+         <aside class="recommendations-sidebar"> {# Handles case where reco_data itself is None or videos list is empty #}
             <h3>Recommended Videos</h3>
             <p>No recommendations available at the moment.</p>
         </aside>

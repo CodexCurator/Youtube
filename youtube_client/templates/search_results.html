@@ -58,9 +58,13 @@
         {# Search results might also have a "Load More" if the API supports it #}
         {# For now, assuming search loads all its initial results without client-side "Load More" specific to search #}
         {# If search API provides a continuation_token, this structure can be used #}
-        {# <div id="load-more-{{ current_page_type | default('search') }}-trigger" class="load-more-trigger-container">
-            {% if continuation_token %}
-                <button hx-get="{{ url_for(api_load_route | default('main.api_load_more_search_route'), token=continuation_token, query=query) }}"
+        <div id="load-more-{{ current_page_type | default('search') }}-trigger" class="load-more-trigger-container">
+            {% if continuation_token and innertube_api_key and client_config %}
+                <button hx-get="{{ url_for(api_load_route | default('main.api_load_more_search_route'),
+                                           token=continuation_token,
+                                           query=query,
+                                           innertube_api_key=innertube_api_key,
+                                           client_config_json=(client_config|tojson if client_config else '')) }}"
                         hx-target="#video-grid-{{ current_page_type | default('search') }}"
                         hx-swap="beforeend"
                         hx-indicator="#loading-spinner-{{ current_page_type | default('search') }}"
@@ -70,11 +74,13 @@
                 <div id="loading-spinner-{{ current_page_type | default('search') }}" class="htmx-indicator">
                     Loading...
                 </div>
+            {% elif continuation_token %}
+                <p>Cannot load more: Missing page context (API key or client config). Token: {{ continuation_token[:20] }}...</p>
             {% else %}
-                 This message might appear if there are few results, or if no further pages.
-                <p>No more search results to load.</p>
+                 {# This message might appear if there are few results, or if no further pages. #}
+                {# <p>No more search results to load.</p> #} {# Keep this commented if initial load is all #}
             {% endif %}
-        </div> #}
+        </div>
     {% else %}
         <p>No results found for "{{ query }}". Try a different search term or go <a href="{{ url_for('main.index') }}">Back to Home</a>.</p>
     {% endif %}

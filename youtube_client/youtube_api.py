@@ -62,26 +62,56 @@ def _make_yt_request(url, cookies_jar):
         print(f"API Error: Could not fetch page {url}: {e}")
         return None
 
-def _fetch_youtube_continuation_json(continuation_token, cookies, client_context=None, endpoint_suffix="browse"):
-    api_key = YT_API_KEY_PLACEHOLDER
-    if "YOUR_VALID_WEB_API_KEY" in api_key:
-        print("API_CONTINUATION WARNING: Placeholder API key is being used. Real continuation requests will fail.")
+def _fetch_youtube_continuation_json(
+    continuation_token: str,
+    cookies: requests.cookies.RequestsCookieJar,
+    innertube_api_key: str,
+    client_config: dict,
+    endpoint_suffix: str = "browse"
+) -> dict | None:
+    """
+    Fetches continuation data from YouTube's internal youtubei/v1 API.
+
+    Args:
+        continuation_token: The token for the next page of results.
+        cookies: The user's cookies.
+        innertube_api_key: The public Innertube API key (extracted from YouTube's JS).
+        client_config: The client configuration dictionary (e.g., from ytInitialData.client).
+        endpoint_suffix: The API endpoint (e.g., "browse", "next", "search").
+    Returns:
+        A dictionary with the JSON response or None on error.
+    """
+    if not all([continuation_token, innertube_api_key, client_config]):
+        print("API_CONTINUATION ERROR: Missing one or more required arguments: continuation_token, innertube_api_key, client_config.")
         return None
 
-    api_url = f"https://www.youtube.com/youtubei/v1/{endpoint_suffix}?key={api_key}&prettyPrint=false"
+    # Basic validation for the key, real keys are usually long alphanumeric strings.
+    if len(innertube_api_key) < 20 or "YOUR_KEY" in innertube_api_key or "PLACEHOLDER" in innertube_api_key:
+         print(f"API_CONTINUATION WARNING: Potentially invalid or placeholder Innertube API key provided: '{str(innertube_api_key)[:20]}...'. Request will likely fail.")
+         # Do not return None here yet, let the request attempt, but it's a strong indicator of failure.
 
-    final_client_context = client_context or YT_CLIENT_CONTEXT_PLACEHOLDER
-    # Ensure essential client fields are present if overriding
-    if 'client' not in final_client_context:
-        final_client_context['client'] = YT_CLIENT_CONTEXT_PLACEHOLDER['client']
-    elif 'clientName' not in final_client_context['client']:
-        final_client_context['client']['clientName'] = YT_CLIENT_CONTEXT_PLACEHOLDER['client']['clientName']
-    if 'clientVersion' not in final_client_context['client']:
-        final_client_context['client']['clientVersion'] = YT_CLIENT_CONTEXT_PLACEHOLDER['client']['clientVersion']
+    api_url = f"https://www.youtube.com/youtubei/v1/{endpoint_suffix}?key={innertube_api_key}&prettyPrint=false"
+
+    # Construct the payload context. client_config is expected to be the 'client' dict.
+    # Other parts of the context (user, request) can be added if found to be necessary.
+    # Minimal context often includes 'client', 'user', and 'request'.
+    payload_full_context = {
+        "client": client_config,
+        "user": {}, # Typically empty for basic browsing unless specific user features are needed.
+        "request": {"useSsl": True}, # Common default.
+        # 'clickTracking': get_nested(ytInitialData, ['clickTracking'], {}), # Example if needed
+    }
+
+    # Ensure essential client fields from placeholder if missing in provided client_config
+    # This is a fallback; ideally, client_config passed should be complete from ytInitialData.client
+    for key, value in YT_CLIENT_CONTEXT_PLACEHOLDER["client"].items():
+        if key not in payload_full_context["client"]:
+            payload_full_context["client"][key] = value
+            print(f"API_CONTINUATION_PAYLOAD_DEBUG: Using placeholder for client_config.{key}: {value}")
 
 
     payload = {
-        "context": final_client_context,
+        "context": payload_full_context,
         "continuation": continuation_token
     }
 
@@ -89,8 +119,9 @@ def _fetch_youtube_continuation_json(continuation_token, cookies, client_context
     session.headers.update(BASE_HEADERS)
     session.headers.update({
         'Content-Type': 'application/json',
-        'X-YouTube-Client-Name': str(get_nested(payload, ['context','client','clientName'], default='1')),
-        'X-YouTube-Client-Version': get_nested(payload,['context','client','clientVersion'], default='2.20240620.00.00'),
+        # These headers are often derived from the clientConfig.
+        'X-YouTube-Client-Name': str(client_config.get('clientName', YT_CLIENT_CONTEXT_PLACEHOLDER['client']['clientName'])),
+        'X-YouTube-Client-Version': client_config.get('clientVersion', YT_CLIENT_CONTEXT_PLACEHOLDER['client']['clientVersion']),
         'Origin': 'https://www.youtube.com',
         'Referer': 'https://www.youtube.com/',
     })
@@ -323,6 +354,77 @@ def parse_video_data_from_script(html_content, context=None, limit=None):
     continuation_token = None
     raw_video_items = []
 
+    # For "Load More" functionality context
+    extracted_innertube_api_key = None
+    extracted_client_config = None
+
+    # Attempt to extract Innertube API Key and client version from script tags
+    # This is fragile as YouTube's JS can change.
+    # Common pattern: ytcfg.set({"INNERTUBE_API_KEY": "...", "INNERTUBE_CONTEXT_CLIENT_VERSION": "..."});
+    # Or sometimes found in ytInitialPlayerResponse for watch pages.
+
+    # First, try to get client config directly from ytInitialData if it was parsed
+    if yt_initial_data:
+        extracted_client_config = yt_initial_data.get("client")
+        # Also, sometimes the full context is in ytInitialData.responseContext which might be useful
+        # full_context_from_initial_data = yt_initial_data.get("responseContext")
+        # if full_context_from_initial_data:
+        #    print(f"API_PARSE_DEBUG: Found responseContext in ytInitialData: {str(full_context_from_initial_data)[:200]}")
+
+
+    for script_tag_content in [s.string for s in scripts if s.string]:
+        if extracted_innertube_api_key and extracted_client_config and extracted_client_config.get('clientVersion') != YT_CLIENT_CONTEXT_PLACEHOLDER['client']['clientVersion']:
+            # If we have a key and a non-placeholder client config, we might be done with script searching for these.
+            # However, client_config can also come from ytInitialData.client directly.
+            # The key is the main thing from ytcfg.
+            if extracted_innertube_api_key: # Only break if key is found, client_config might be better from ytInitialData
+                 break
+
+
+        # Attempt to find Innertube API Key
+        if not extracted_innertube_api_key:
+            match_api_key = re.search(r'"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"', script_tag_content)
+            if match_api_key:
+                extracted_innertube_api_key = match_api_key.group(1)
+                print(f"API_PARSE_CONTEXT: Found INNERTUBE_API_KEY: ...{extracted_innertube_api_key[-10:]}") # Log last 10 chars for brevity
+
+        # Attempt to find client version and name from ytcfg if client_config wasn't fully populated from ytInitialData
+        # This provides a fallback or supplement to ytInitialData.client
+        if not extracted_client_config or not extracted_client_config.get('clientVersion') or not extracted_client_config.get('clientName'):
+            temp_client_version = None
+            temp_client_name = None
+
+            match_client_version = re.search(r'"INNERTUBE_CONTEXT_CLIENT_VERSION"\s*:\s*"([^"]+)"', script_tag_content)
+            if match_client_version:
+                temp_client_version = match_client_version.group(1)
+                print(f"API_PARSE_CONTEXT: Found INNERTUBE_CONTEXT_CLIENT_VERSION: {temp_client_version}")
+
+            # clientName is often "WEB" or "WEB_REMIX" (for YouTube Music)
+            # It might be in INNERTUBE_CONTEXT or directly as clientName in ytcfg
+            match_client_name = re.search(r'"INNERTUBE_CLIENT_NAME"\s*:\s*"([^"]+)"', script_tag_content) \
+                                 or re.search(r'"CLIENT_NAME"\s*:\s*"([^"]+)"', script_tag_content) # Common variations
+            if match_client_name:
+                temp_client_name = match_client_name.group(1).upper() # Often "WEB"
+                print(f"API_PARSE_CONTEXT: Found client name from ytcfg: {temp_client_name}")
+
+            if temp_client_version or temp_client_name:
+                if not extracted_client_config: # If no client config from ytInitialData at all
+                    extracted_client_config = YT_CLIENT_CONTEXT_PLACEHOLDER['client'].copy() # Start with placeholder
+
+                if temp_client_version and extracted_client_config.get('clientVersion') == YT_CLIENT_CONTEXT_PLACEHOLDER['client']['clientVersion']:
+                     extracted_client_config['clientVersion'] = temp_client_version
+                if temp_client_name: # ytcfg clientName might be more specific (e.g. WEB_REMIX)
+                     extracted_client_config['clientName'] = temp_client_name
+
+    # If still no complete client_config, use placeholder as last resort
+    if not extracted_client_config:
+        print("API_PARSE_CONTEXT: No client config found from ytInitialData or ytcfg, using placeholder.")
+        extracted_client_config = YT_CLIENT_CONTEXT_PLACEHOLDER['client'].copy()
+    elif extracted_client_config.get('clientVersion') == YT_CLIENT_CONTEXT_PLACEHOLDER['client']['clientVersion'] and 'INNERTUBE_CONTEXT_CLIENT_VERSION' not in str(scripts):
+        # If clientVersion is still the placeholder and we didn't find a specific one in scripts, it's likely correct enough for WEB.
+        pass
+
+
     tab_content = None
     # Try to find main content area based on typical structures for different contexts
     if context in ["home", "subscriptions", "channel"]:
@@ -475,9 +577,22 @@ def parse_video_data_from_script(html_content, context=None, limit=None):
                 item_count += 1
 
     print(f"API_PARSE: Successfully parsed {len(video_data_list)} videos for context '{context}'. Continuation: {str(continuation_token)[:20] if continuation_token else 'None'}")
-    return {'videos': video_data_list, 'continuation_token': continuation_token}
+    return {
+        'videos': video_data_list,
+        'continuation_token': continuation_token,
+        'innertube_api_key': extracted_innertube_api_key,
+        'client_config': extracted_client_config
+    }
 
 # --- Main Data Fetching Functions ---
+# Standard dictionary to return on failure for main fetch functions
+EMPTY_PARSED_DATA = {
+    'videos': [],
+    'continuation_token': None,
+    'innertube_api_key': None,
+    'client_config': None
+}
+
 def get_homepage_videos_parsed(limit=30):
     print("API: Attempting to fetch and parse homepage videos...")
     cookies = load_cookies()
@@ -485,7 +600,7 @@ def get_homepage_videos_parsed(limit=30):
     if html_content:
         return parse_video_data_from_script(html_content, context="home", limit=limit)
     print("API: Failed to get homepage HTML.")
-    return {'videos': [], 'continuation_token': None}
+    return EMPTY_PARSED_DATA.copy()
 
 def search_videos_parsed(query, limit=30):
     print(f"API: Searching for '{query}'...")
@@ -494,19 +609,19 @@ def search_videos_parsed(query, limit=30):
     if html_content:
         return parse_video_data_from_script(html_content, context="search", limit=limit)
     print(f"API: Failed to get search results HTML for '{query}'.")
-    return {'videos': [], 'continuation_token': None}
+    return EMPTY_PARSED_DATA.copy()
 
 def get_subscriptions_feed_parsed(limit=30):
     print("API: Attempting to fetch and parse actual subscriptions feed...")
     cookies = load_cookies()
     if not cookies or len(cookies) == 0:
         print("API: No cookies loaded, cannot fetch subscriptions feed.")
-        return {'videos': [], 'continuation_token': None}
+        return EMPTY_PARSED_DATA.copy()
     html_content = _make_yt_request("https://www.youtube.com/feed/subscriptions", cookies)
     if html_content:
         return parse_video_data_from_script(html_content, context="subscriptions", limit=limit)
     print("API: Failed to get subscriptions page HTML.")
-    return {'videos': [], 'continuation_token': None}
+    return EMPTY_PARSED_DATA.copy()
 
 def get_channel_videos_parsed(channel_url, limit=30):
     print(f"API: Attempting to fetch DYNAMIC channel videos for '{channel_url}'...")
@@ -634,54 +749,108 @@ def get_recommended_videos_for_player(current_video_id=None, limit=15):
 
 
     print(f"API: Failed to get or parse recommendations for {current_video_id}. Returning static fallback.")
+    # Static fallback should also conform to the new richer dictionary structure, even if key/config are None
     static_reco_videos = [
         {'video_id': 'recoVid1', 'youtube_url': 'https://www.youtube.com/watch?v=recoVid1', 'title': 'Static Reco 1', 'thumbnail_url': DEFAULT_THUMBNAIL_PLACEHOLDER, 'channel_name': 'RecoChan1', 'channel_url': '#', 'duration_text': '10:00', 'published_time_text': '1 day ago'},
         {'video_id': 'recoVid2', 'youtube_url': 'https://www.youtube.com/watch?v=recoVid2', 'title': 'Static Reco 2', 'thumbnail_url': DEFAULT_THUMBNAIL_PLACEHOLDER, 'channel_name': 'RecoChan2', 'channel_url': '#', 'duration_text': '12:00', 'published_time_text': '2 days ago'}
     ]
     filtered_recos = [v for v in static_reco_videos if v['video_id'] != current_video_id][:limit]
-    return {'videos': filtered_recos, 'continuation_token': f'fake_reco_cont_{current_video_id}_{int(time.time())}' if len(filtered_recos) == limit and len(static_reco_videos) > limit else None}
+
+    return {
+        'videos': filtered_recos,
+        'continuation_token': f'fake_reco_cont_{current_video_id}_{int(time.time())}' if len(filtered_recos) == limit and len(static_reco_videos) > limit else None,
+        'innertube_api_key': None, # No key from static data
+        'client_config': None # No client config from static data
+    }
 
 # --- "Load More" API functions ---
-def get_more_home_videos_parsed(continuation_data=None, client_context_from_page=None):
-    print(f"API: Getting MORE homepage videos (token: {str(continuation_data)[:20] if continuation_data else 'None'})...")
-    if not continuation_data: return {'videos': [], 'continuation_token': None}
-    cookies = load_cookies()
-    client_context = client_context_from_page or YT_CLIENT_CONTEXT_PLACEHOLDER # Use page context if available
-    json_response = _fetch_youtube_continuation_json(continuation_data, cookies, client_context=client_context, endpoint_suffix="browse")
-    if json_response:
-        return _parse_continuation_json_response(json_response, context="home", limit=30) # Apply limit to continued items too
-    return {'videos': [], 'continuation_token': None}
+# Each of these will now require innertube_api_key and client_config to be passed.
+# They will return the standard rich dictionary, including these keys for the next call.
 
-def get_more_subscriptions_videos_parsed(continuation_data=None, client_context_from_page=None):
-    print(f"API: Getting MORE subscription videos (token: {str(continuation_data)[:20] if continuation_data else 'None'})...")
-    if not continuation_data: return {'videos': [], 'continuation_token': None}
-    cookies = load_cookies()
-    client_context = client_context_from_page or YT_CLIENT_CONTEXT_PLACEHOLDER
-    json_response = _fetch_youtube_continuation_json(continuation_data, cookies, client_context=client_context, endpoint_suffix="browse")
-    if json_response:
-        return _parse_continuation_json_response(json_response, context="subscriptions", limit=30)
-    return {'videos': [], 'continuation_token': None}
+def get_more_home_videos_parsed(continuation_data: str, innertube_api_key: str, client_config: dict):
+    print(f"API: Getting MORE homepage videos (token: {str(continuation_data)[:20]})...")
+    if not all([continuation_data, innertube_api_key, client_config]):
+        print("API_MORE_HOME: Missing required arguments for continuation.")
+        return EMPTY_PARSED_DATA.copy()
 
-def get_more_channel_videos_parsed(channel_url, continuation_data=None, client_context_from_page=None):
-    print(f"API: Getting MORE channel videos for {channel_url} (token: {str(continuation_data)[:20] if continuation_data else 'None'})...")
-    if not continuation_data: return {'videos': [], 'continuation_token': None}
     cookies = load_cookies()
-    client_context = client_context_from_page or YT_CLIENT_CONTEXT_PLACEHOLDER
-    # Client context might need specific browseId for channel, usually part of initial ytInitialData.context
-    # This part is tricky and might need info from the first page load's context.
-    json_response = _fetch_youtube_continuation_json(continuation_data, cookies, client_context=client_context, endpoint_suffix="browse")
+    json_response = _fetch_youtube_continuation_json(
+        continuation_token=continuation_data,
+        cookies=cookies,
+        innertube_api_key=innertube_api_key,
+        client_config=client_config,
+        endpoint_suffix="browse"
+    )
     if json_response:
-        return _parse_continuation_json_response(json_response, context="channel", limit=30)
-    return {'videos': [], 'continuation_token': None}
+        parsed = _parse_continuation_json_response(json_response, context="home", limit=30)
+        # Return the original key/config as they are typically stable for a session of pagination
+        parsed['innertube_api_key'] = innertube_api_key
+        parsed['client_config'] = client_config
+        return parsed
+    return {**EMPTY_PARSED_DATA.copy(), 'innertube_api_key': innertube_api_key, 'client_config': client_config}
 
-def get_more_recommended_videos_parsed(current_video_id, continuation_data=None, client_context_from_page=None):
-    print(f"API: Getting MORE recommended videos for {current_video_id} (token: {str(continuation_data)[:20] if continuation_data else 'None'})...")
-    if not continuation_data: return {'videos': [], 'continuation_token': None}
+
+def get_more_subscriptions_videos_parsed(continuation_data: str, innertube_api_key: str, client_config: dict):
+    print(f"API: Getting MORE subscription videos (token: {str(continuation_data)[:20]})...")
+    if not all([continuation_data, innertube_api_key, client_config]):
+        print("API_MORE_SUBS: Missing required arguments for continuation.")
+        return EMPTY_PARSED_DATA.copy()
+
     cookies = load_cookies()
-    client_context = client_context_from_page or YT_CLIENT_CONTEXT_PLACEHOLDER
-    # Recommendations often use the /youtubei/v1/next endpoint
-    json_response = _fetch_youtube_continuation_json(continuation_data, cookies, client_context=client_context, endpoint_suffix="next")
+    json_response = _fetch_youtube_continuation_json(
+        continuation_token=continuation_data,
+        cookies=cookies,
+        innertube_api_key=innertube_api_key,
+        client_config=client_config,
+        endpoint_suffix="browse"
+    )
     if json_response:
-        # Recommended items often use compactVideoRenderer
-        return _parse_continuation_json_response(json_response, context="recommendations", limit=15) # Limit for recos
-    return {'videos': [], 'continuation_token': None}
+        parsed = _parse_continuation_json_response(json_response, context="subscriptions", limit=30)
+        parsed['innertube_api_key'] = innertube_api_key
+        parsed['client_config'] = client_config
+        return parsed
+    return {**EMPTY_PARSED_DATA.copy(), 'innertube_api_key': innertube_api_key, 'client_config': client_config}
+
+def get_more_channel_videos_parsed(channel_url: str, continuation_data: str, innertube_api_key: str, client_config: dict):
+    # channel_url might not be strictly needed if context is well-formed, but good for logging
+    print(f"API: Getting MORE channel videos for {channel_url} (token: {str(continuation_data)[:20]})...")
+    if not all([continuation_data, innertube_api_key, client_config]):
+        print("API_MORE_CHANNEL: Missing required arguments for continuation.")
+        return EMPTY_PARSED_DATA.copy()
+
+    cookies = load_cookies()
+    json_response = _fetch_youtube_continuation_json(
+        continuation_token=continuation_data,
+        cookies=cookies,
+        innertube_api_key=innertube_api_key,
+        client_config=client_config,
+        endpoint_suffix="browse"
+    )
+    if json_response:
+        parsed = _parse_continuation_json_response(json_response, context="channel", limit=30)
+        parsed['innertube_api_key'] = innertube_api_key
+        parsed['client_config'] = client_config
+        return parsed
+    return {**EMPTY_PARSED_DATA.copy(), 'innertube_api_key': innertube_api_key, 'client_config': client_config}
+
+
+def get_more_recommended_videos_parsed(current_video_id: str, continuation_data: str, innertube_api_key: str, client_config: dict):
+    print(f"API: Getting MORE recommended videos for {current_video_id} (token: {str(continuation_data)[:20]})...")
+    if not all([continuation_data, innertube_api_key, client_config]):
+        print("API_MORE_RECO: Missing required arguments for continuation.")
+        return EMPTY_PARSED_DATA.copy()
+
+    cookies = load_cookies()
+    json_response = _fetch_youtube_continuation_json(
+        continuation_token=continuation_data,
+        cookies=cookies,
+        innertube_api_key=innertube_api_key,
+        client_config=client_config,
+        endpoint_suffix="next" # Recommendations use "next" endpoint
+    )
+    if json_response:
+        parsed = _parse_continuation_json_response(json_response, context="recommendations", limit=15)
+        parsed['innertube_api_key'] = innertube_api_key
+        parsed['client_config'] = client_config
+        return parsed
+    return {**EMPTY_PARSED_DATA.copy(), 'innertube_api_key': innertube_api_key, 'client_config': client_config}
