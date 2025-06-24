@@ -4,6 +4,7 @@ from bs4 import BeautifulSoup
 from http.cookiejar import MozillaCookieJar
 import os
 import time
+import re # <--- Added import re
 
 from youtube_client import config
 
